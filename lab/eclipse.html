@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<title>日食和月食 · 3D科学教室</title>
+</head>
+<body>
+<div id="app"></div>
+<div id="status" class="hidden"></div>
+<div id="ctrl" class="panel">
+  <label><input type="checkbox" id="auto" checked>月亮自动绕圈</label>
+  <label>月亮位置 <input type="range" id="ma" min="0" max="360" step="0.5" value="40"><span class="val" id="maVal">40°</span></label>
+</div>
+
+<script src="common.js"></script>
+<script type="importmap">
+{ "imports": { "three": "../vendor/three.module.min.js", "three/addons/": "../vendor/" } }
+</script>
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+window.THREE = THREE;
+
+Lab.init({ title: '🌑 日食和月食', tag: '科学', hint: '拖动月亮位置 · 拖拽旋转视角 · 等着看影子咬住地球!' });
+
+const { renderer, scene, camera, controls } = Lab.scene3d({ orbit: OrbitControls, cam: [2, 9, 15] });
+scene.add(new THREE.AmbientLight(0x556688, 0.5));
+const sunLight = new THREE.DirectionalLight(0xfff2d8, 2.2);
+scene.add(sunLight);
+Lab.stars(scene, 800);
+
+function textSprite(text, color = '#ffe9a8', size = 1.6) {
+  const c = document.createElement('canvas'); c.width = 256; c.height = 96;
+  const ctx = c.getContext('2d');
+  ctx.font = 'bold 54px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.shadowColor = 'rgba(0,0,0,0.9)'; ctx.shadowBlur = 8;
+  ctx.fillStyle = color; ctx.fillText(text, 128, 52);
+  const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: Lab.toTexture(c), transparent: true, depthWrite: false }));
+  sp.scale.set(size, size * 0.375, 1);
+  return sp;
+}
+
+// 太阳(左)、地球(右)、月亮(绕地球)
+const sun = new THREE.Mesh(new THREE.SphereGeometry(3.4, 32, 16), new THREE.MeshBasicMaterial({ color: 0xffdf8a }));
+sun.position.set(-15, 0, 0); scene.add(sun);
+const glow = new THREE.Sprite(new THREE.SpriteMaterial({
+  map: Lab.softDot(), color: 0xffcf7a, blending: THREE.AdditiveBlending, transparent: true, depthWrite: false
+}));
+glow.position.copy(sun.position); glow.scale.setScalar(22); scene.add(glow);
+const sunLabel = textSprite('太阳', '#ffdf8a'); sunLabel.position.set(-15, 5, 0); scene.add(sunLabel);
+
+const EARTH_R = 1.1, MOON_R = 0.45, MOON_ORBIT = 4.6;
+const earth = new THREE.Mesh(new THREE.SphereGeometry(EARTH_R, 48, 24),
+  new THREE.MeshStandardMaterial({ map: Lab.earthTexture(), roughness: 1 }));
+earth.position.set(9, 0, 0); scene.add(earth);
+const earthLabel = textSprite('地球', '#8fd0ff'); earthLabel.position.set(9, 2.8, 0); scene.add(earthLabel);
+const moon = new THREE.Mesh(new THREE.SphereGeometry(MOON_R, 32, 16),
+  new THREE.MeshStandardMaterial({ map: Lab.craterTexture(99, 0xb8b4ae, 0x6e6a64, 60), roughness: 1 }));
+scene.add(moon);
+const moonLabel = textSprite('月亮', '#e8e8ff', 1.1); scene.add(moonLabel);
+// 月亮轨道
+const orbitLine = new THREE.LineLoop(
+  new THREE.BufferGeometry().setFromPoints(Array.from({ length: 96 }, (_, i) => {
+    const a = i / 96 * Math.PI * 2;
+    return new THREE.Vector3(earth.position.x + Math.cos(a) * MOON_ORBIT, 0, Math.sin(a) * MOON_ORBIT);
+  })),
+  new THREE.LineBasicMaterial({ color: 0x5577bb, transparent: true, opacity: 0.4 })
+);
+scene.add(orbitLine);
+
+// 影子锥(半透明):base=天体,朝背光方向
+function shadowCone(rBase, len, color) {
+  const geo = new THREE.ConeGeometry(rBase, len, 32, 1, true);
+  const mat = new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.28, side: THREE.DoubleSide, depthWrite: false });
+  const m = new THREE.Mesh(geo, mat);
+  scene.add(m);
+  return m;
+}
+const earthShadow = shadowCone(EARTH_R * 1.05, 14, 0x223377);
+const moonShadow = shadowCone(MOON_R * 1.05, MOON_ORBIT + EARTH_R + 1.2, 0x223377);
+function aimCone(cone, bodyPos) {
+  const antiSun = bodyPos.clone().sub(sun.position).normalize();
+  cone.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), antiSun);
+  cone.position.copy(bodyPos).addScaledVector(antiSun, cone.geometry.parameters.height / 2);
+}
+
+const maEl = document.getElementById('ma');
+let ma = 40;
+function update() {
+  const phi = ma / 180 * Math.PI;
+  // φ=0 → 月亮在地球、太阳之间(日食);φ=π → 月亮在地球背后(月食)
+  moon.position.set(
+    earth.position.x - Math.cos(phi) * MOON_ORBIT,
+    0,
+    Math.sin(phi) * MOON_ORBIT
+  );
+  moonLabel.position.copy(moon.position).add(new THREE.Vector3(0, 1.1, 0));
+  sunLight.position.copy(sun.position);
+  aimCone(earthShadow, earth.position);
+  aimCone(moonShadow, moon.position);
+
+  const d = Math.abs(((ma % 360) + 360) % 360);
+  let msg, big = false;
+  if (d < 9 || d > 351) { msg = '🌑 日食啦!月亮的影子罩住了地球,白天变黑了!'; big = true; }
+  else if (d > 171 && d < 189) { msg = '🌖 月食啦!月亮钻进了地球的影子,变成了红铜色!'; big = true; }
+  else msg = '一切正常 · 拖动月亮位置,试试 0° 或 180° 会发生什么';
+  Lab.status(msg);
+  document.getElementById('status').style.background = big ? 'rgba(226,68,68,0.9)' : 'rgba(240,152,58,0.85)';
+  document.getElementById('maVal').textContent = Math.round(ma) + '°';
+}
+maEl.oninput = () => { document.getElementById('auto').checked = false; ma = +maEl.value; update(); };
+update();
+
+Lab.fact([
+  { t: '日食:月亮挡住太阳', d: '当月亮正好跑到地球和太阳中间,它的影子投在地球上,被影子罩住的地方白天会突然变黑,太阳像被咬了一口!' },
+  { t: '月食:月亮钻进地影', d: '当月亮跑到地球背后、钻进地球的影子,月光被挡住,月亮变成神秘的红铜色,叫"红月亮"。' },
+  { t: '为什么不是每个月都有?', d: '月亮绕地球的轨道是斜着的,大多数时候影子会擦肩而过,所以日食月食是很难得的天象!' },
+]);
+Lab.quiz([
+  { q: '日食发生时,三个天体的排列顺序是?', opt: ['太阳-地球-月亮', '太阳-月亮-地球', '月亮-太阳-地球'], a: 1, why: '月亮夹在中间,把太阳光挡住了,它的影子落在地球上,就是日食!' },
+  { q: '月食时月亮为什么会变成红铜色?', opt: ['月亮着火了', '地球大气把红光折射到月亮上', '它变成了 Mars'], a: 1, why: '地球的大气层像棱镜,把太阳光中的红光弯折到月亮上,月亮就"红"了!' },
+  { q: '为什么不是每个月都发生日食和月食?', opt: ['月亮 sometimes 偷懒', '月亮轨道是斜的,影子经常错开', '太阳会躲开'], a: 1, why: '月亮的轨道面和地球公转面差了大约5°,影子常常擦肩而过,所以日食很珍贵!' },
+]);
+
+renderer.setAnimationLoop(() => {
+  if (document.getElementById('auto').checked) {
+    ma = (ma + 0.2) % 360;
+    maEl.value = ma;
+    update();
+  }
+  controls.update();
+  renderer.render(scene, camera);
+});
+</script>
+</body>
+</html>
