@@ -33,7 +33,7 @@ const dl = new THREE.DirectionalLight(0xffffff, 1.2); dl.position.set(6, 8, 6); 
 
 // 喇叭
 const speaker = new THREE.Group();
-speaker.add(new THREE.Mesh(new THREE.BoxGeometry(1.4, 3, 2.6), new THREE.MeshStandardMaterial({ color: 0x39445c, roughness: 0.6 })));
+speaker.add(new THREE.Mesh(new THREE.BoxGeometry(1.4, 3, 2.6), new THREE.MeshStandardMaterial({ color: 0x4d5f82, roughness: 0.55 })));
 const coneOuter = new THREE.Mesh(new THREE.CylinderGeometry(0.95, 0.55, 0.5, 24, 1, true), new THREE.MeshStandardMaterial({ color: 0x222c40, roughness: 0.5, side: THREE.DoubleSide }));
 coneOuter.rotation.z = Math.PI / 2; coneOuter.position.x = 0.95;
 speaker.add(coneOuter);
