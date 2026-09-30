@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<title>正方体展开图 · 3D科学教室</title>
+</head>
+<body>
+<div id="app"></div>
+<div id="status" class="hidden"></div>
+<div id="ctrl" class="panel">
+  <span>展开图:</span>
+  <button data-p="0" class="active">十字形</button>
+  <button data-p="1">凹字形</button>
+  <button data-p="2">阶梯形</button>
+  <button data-p="3">田字形</button>
+  <label>折叠 <input type="range" id="fold" min="0" max="100" value="0"><span class="val" id="foldVal">展开</span></label>
+  <label><input type="checkbox" id="auto">自动开合</label>
+</div>
+
+<script src="common.js"></script>
+<script type="importmap">
+{ "imports": { "three": "../vendor/three.module.min.js", "three/addons/": "../vendor/" } }
+</script>
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+window.THREE = THREE;
+
+Lab.init({ title: '📦 正方体展开图', tag: '数学', hint: '拖动滑块折正方体 · 拖拽旋转视角' });
+
+// 四种可折成 正方体 的展开图案(格子坐标 col,row)
+const PATTERNS = [
+  { name: '十字形', cells: [[0,1],[1,1],[2,1],[3,1],[1,0],[1,2]] },
+  { name: '凹字形', cells: [[0,0],[1,0],[0,1],[1,1],[2,1],[2,2]] },
+  { name: '阶梯形', cells: [[0,0],[1,0],[1,1],[2,1],[2,2],[3,2]] },
+  { name: '田字形', cells: [[0,0],[1,0],[2,0],[0,1],[1,1],[2,1]] },
+];
+const COLORS = [0xff6b6b, 0x4dabf7, 0x51cf66, 0xffd43b, 0xe599f7, 0xff922b];
+
+const { renderer, scene, camera, controls } = Lab.scene3d({ orbit: OrbitControls, cam: [3.5, 3.2, 4.5] });
+scene.add(new THREE.AmbientLight(0xffffff, 0.75));
+const dir = new THREE.DirectionalLight(0xffffff, 1.6); dir.position.set(4, 6, 5); scene.add(dir);
+Lab.stars(scene, 500);
+
+// 给面画编号贴图
+function faceTexture(n, color) {
+  const c = document.createElement('canvas'); c.width = c.height = 256;
+  const ctx = c.getContext('2d');
+  ctx.fillStyle = '#' + color.toString(16).padStart(6, '0');
+  ctx.fillRect(0, 0, 256, 256);
+  ctx.fillStyle = 'rgba(255,255,255,0.35)'; ctx.fillRect(10, 10, 236, 236);
+  ctx.fillStyle = 'rgba(0,0,0,0.75)';
+  ctx.font = 'bold 130px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.fillText(n, 128, 140);
+  return Lab.toTexture(c);
+}
+
+// 依据格子集合生成折叠层级:BFS 生成树,嵌套 Group,折叠角 = 深度 × 90°
+let root = null;
+function buildNet(pattern) {
+  if (root) { scene.remove(root); }
+  const cells = pattern.cells;
+  const key = ([x, y]) => x + ',' + y;
+  const set = new Set(cells.map(key));
+  const center = cells.reduce((s, c) => [s[0] + c[0] / 6, s[1] + c[1] / 6], [0, 0]);
+  // BFS 生成树
+  const parent = new Map(), depth = new Map();
+  const queue = [cells[0]];
+  parent.set(key(cells[0]), null); depth.set(key(cells[0]), 0);
+  while (queue.length) {
+    const [x, y] = queue.shift();
+    for (const [dx, dy] of [[1,0],[-1,0],[0,1],[0,-1]]) {
+      const k = (x + dx) + ',' + (y + dy);
+      if (set.has(k) && !parent.has(k)) { parent.set(k, [x, y]); depth.set(k, depth.get(key([x, y])) + 1); queue.push([x + dx, y + dy]); }
+    }
+  }
+  // 建面(带编号),再按树挂到嵌套 Group
+  const groups = new Map(), meshes = new Map();
+  cells.forEach(([x, y], i) => {
+    const g = new THREE.Group();
+    groups.set(key([x, y]), g);
+    const geo = new THREE.PlaneGeometry(1, 1);
+    const mesh = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({
+      map: faceTexture(i + 1, COLORS[i]), roughness: 0.6, side: THREE.DoubleSide
+    }));
+    mesh.add(new THREE.LineSegments(new THREE.EdgesGeometry(geo), new THREE.LineBasicMaterial({ color: 0x113366 })));
+    meshes.set(key([x, y]), { mesh, x, y });
+  });
+  // 挂树:childGroup 放在铰链处,面本体再偏移半格
+  cells.forEach(([x, y]) => {
+    const k = key([x, y]);
+    const info = meshes.get(k), g = groups.get(k);
+    g.add(info.mesh);
+    info.mesh.position.set(0, 0, 0); // 先归零,下面按父方向摆
+    const p = parent.get(k);
+    if (p === null) { info.mesh.position.set(0, 0, 0); root = g; root.position.set(-center[0], -center[1], 0); scene.add(g); }
+    else {
+      const dx = x - p[0], dy = y - p[1];
+      const pg = groups.get(key(p));
+      g.position.set(dx * 0.5, dy * 0.5, 0);
+      info.mesh.position.set(dx * 0.5, dy * 0.5, 0);
+      pg.add(g);
+    }
+  });
+  markAxes();
+  applyFold(currentFold);
+}
+function applyFold(t) {
+  if (!root) return;
+  currentFold = t;
+  const A = Math.PI / 2;
+  root.traverse(o => {
+    if (!o.isGroup || o === root) return;
+    // 通过 group 的 userData 记录铰链方向
+    if (!o.userData.axis) return;
+    const ang = t * A;
+    if (o.userData.axis === 'y+') o.rotation.y = -ang;
+    else if (o.userData.axis === 'y-') o.rotation.y = ang;
+    else if (o.userData.axis === 'x+') o.rotation.x = ang;
+    else o.rotation.x = -ang;
+  });
+  document.getElementById('foldVal').textContent = t < 0.02 ? '展开' : (t > 0.98 ? '正方体!' : Math.round(t * 90) + '°');
+}
+let currentFold = 0;
+
+// 重建后给每个子 group 打铰链方向标记
+function markAxes() {
+  root.traverse(o => {
+    if (!o.isGroup || o === root) return;
+    const p = o.position;
+    if (p.x > 0.4) o.userData.axis = 'y+';
+    else if (p.x < -0.4) o.userData.axis = 'y-';
+    else if (p.y > 0.4) o.userData.axis = 'x+';
+    else if (p.y < -0.4) o.userData.axis = 'x-';
+  });
+}
+
+buildNet(PATTERNS[0]);
+
+// 事件
+document.querySelectorAll('#ctrl button[data-p]').forEach(b => b.onclick = () => {
+  document.querySelectorAll('#ctrl button[data-p]').forEach(x => x.classList.remove('active'));
+  b.classList.add('active');
+  buildNet(PATTERNS[+b.dataset.p]);
+  markAxes();
+  Lab.status(PATTERNS[+b.dataset.p].name + ' 展开图', 1500);
+});
+const foldEl = document.getElementById('fold');
+foldEl.oninput = () => { document.getElementById('auto').checked = false; applyFold(foldEl.value / 100); };
+document.getElementById('auto').onchange = e => { if (e.target.checked) foldEl.value = 0; };
+
+Lab.fact([
+  { t: '正方体小档案', d: '正方体有 6 个面、12 条棱、8 个顶点。每个面都是一模一样的正方形!' },
+  { t: '11 种展开图', d: '能折成正方体的展开图一共有 11 种:一四一型 6 种、二三一型 3 种、二二二型(阶梯)和三三型各 1 种。' },
+  { t: '小窍门', d: '判断能不能折成正方体:想象自己是一只小蚂蚁,沿着图爬一圈,如果任何两面都不会叠在一起,就能折成!' },
+]);
+Lab.quiz([
+  { q: '正方体有几个顶点?', opt: ['6 个', '8 个', '12 个'], a: 1, why: '正方体有 8 个顶点,6 个面,12 条棱。记住"6面8顶12棱"!' },
+  { q: '下面哪种展开图不能折成正方体?', opt: ['十字形', '田字形(2×3)', '一字排开 6 个格子'], a: 2, why: '6 个格子排成一条直线折不起来,会缺面!能折成正方体的展开图只有 11 种。' },
+  { q: '正方体展开后,原来的"上面"和"下面"是什么关系?', opt: ['相邻', '相对(隔开的)', '重叠'], a: 1, why: '折成正方体后,相对的面在展开图里一定不相邻、也不共顶点。' },
+]);
+
+// 自动开合动画
+let t0 = performance.now();
+renderer.setAnimationLoop(() => {
+  if (document.getElementById('auto').checked) {
+    const f = (Math.sin((performance.now() - t0) / 1600) + 1) / 2;
+    applyFold(f);
+  }
+  root.rotation.y += 0.003;
+  controls.update();
+  renderer.render(scene, camera);
+});
+</script>
+</body>
+</html>
