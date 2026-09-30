@@ -1,0 +1,189 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<title>分数披萨店 · 3D科学教室</title>
+</head>
+<body>
+<div id="app"></div>
+<div id="status">点一块披萨把它拿走,看看剩下几分之几</div>
+<div id="ctrl" class="panel">
+  <span>切成:</span>
+  <button data-n="2">2 块</button>
+  <button data-n="3">3 块</button>
+  <button data-n="4" class="active">4 块</button>
+  <button data-n="6">6 块</button>
+  <button data-n="8">8 块</button>
+  <button id="reset">摆回来 🍕</button>
+</div>
+
+<script src="common.js"></script>
+<script type="importmap">
+{ "imports": { "three": "../vendor/three.module.min.js", "three/addons/": "../vendor/" } }
+</script>
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+window.THREE = THREE;
+
+Lab.init({ title: '🍕 分数披萨店', tag: '数学', hint: '点击披萨块拿走/放回 · 拖拽旋转视角' });
+
+const { renderer, scene, camera, controls } = Lab.scene3d({ orbit: OrbitControls, cam: [0, 5.5, 5] });
+controls.maxPolarAngle = Math.PI * 0.46;
+scene.add(new THREE.AmbientLight(0xffffff, 0.85));
+const dl = new THREE.DirectionalLight(0xfff2dd, 1.4); dl.position.set(3, 6, 2); scene.add(dl);
+
+// 餐桌
+scene.add(new THREE.Mesh(
+  new THREE.CylinderGeometry(7, 7, 0.4, 48),
+  new THREE.MeshStandardMaterial({ color: 0x8a5a38, roughness: 0.85 })
+)).position.y = -0.32;
+// 盘子
+const plate = new THREE.Mesh(
+  new THREE.CylinderGeometry(2.9, 2.6, 0.16, 48),
+  new THREE.MeshStandardMaterial({ color: 0xf2f4f8, roughness: 0.35 })
+);
+plate.position.y = -0.02; scene.add(plate);
+
+// 披萨表面贴图:芝士 + 意大利肠
+function pizzaTexture() {
+  const c = document.createElement('canvas'); c.width = c.height = 512;
+  const ctx = c.getContext('2d');
+  ctx.fillStyle = '#f4b04a'; ctx.fillRect(0, 0, 512, 512);
+  const fbm = Lab.makeFbm(9, 32);
+  const img = ctx.getImageData(0, 0, 512, 512), d = img.data;
+  for (let i = 0; i < d.length; i += 4) {
+    const n = (fbm((i / 4 % 512) / 512 * 24, (i / 4 / 512) / 512 * 24, 3) - 0.5) * 36;
+    d[i] += n; d[i + 1] += n; d[i + 2] += n * 0.6;
+  }
+  ctx.putImageData(img, 0, 0);
+  let a = 77;
+  const rand = () => { a |= 0; a = a + 0x6D2B79F5 | 0; let t = Math.imul(a ^ a >>> 15, 1 | a); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; };
+  for (let i = 0; i < 14; i++) {
+    const x = 60 + rand() * 392, y = 60 + rand() * 392, r = 16 + rand() * 20;
+    ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.fillStyle = '#c0392b'; ctx.fill();
+    ctx.beginPath(); ctx.arc(x - r * 0.2, y - r * 0.2, r * 0.55, 0, Math.PI * 2); ctx.fillStyle = '#e05a4b'; ctx.fill();
+  }
+  for (let i = 0; i < 26; i++) {
+    const x = 50 + rand() * 412, y = 50 + rand() * 412;
+    ctx.beginPath(); ctx.arc(x, y, 4 + rand() * 5, 0, Math.PI * 2); ctx.fillStyle = '#4caf50'; ctx.fill();
+  }
+  return Lab.toTexture(c);
+}
+const topTex = pizzaTexture();
+
+const slicesGroup = new THREE.Group();
+scene.add(slicesGroup);
+let n = 4, taken = [];
+
+function buildPizza() {
+  slicesGroup.clear();
+  taken = [];
+  const gap = 0.028;
+  const seg = Math.PI * 2 / n;
+  for (let i = 0; i < n; i++) {
+    const start = i * seg + gap / 2, len = seg - gap;
+    const shape = new THREE.Shape();
+    shape.moveTo(0, 0);
+    shape.absarc(0, 0, 2.35, start, start + len, false);
+    shape.lineTo(0, 0);
+    const geo = new THREE.ExtrudeGeometry(shape, { depth: 0.22, bevelEnabled: true, bevelSize: 0.03, bevelThickness: 0.03, bevelSegments: 1, curveSegments: 24 });
+    // UV 简单映射到圆盘,让贴图随切法不变形
+    const pos = geo.attributes.position, uv = geo.attributes.uv;
+    for (let v = 0; v < pos.count; v++) {
+      uv.setXY(v, pos.getX(v) / 5 + 0.5, pos.getY(v) / 5 + 0.5);
+    }
+    const mats = [
+      new THREE.MeshStandardMaterial({ map: topTex, roughness: 0.7 }),                     // 顶
+      new THREE.MeshStandardMaterial({ color: 0xd68f2e, roughness: 0.75 }),                // 底
+      new THREE.MeshStandardMaterial({ color: 0xe8b563, roughness: 0.75 }),                // 侧
+    ];
+    const m = new THREE.Mesh(geo, mats);
+    m.rotation.x = -Math.PI / 2;
+    m.rotation.z = 0;
+    m.position.y = 0.12;
+    m.userData.i = i;
+    slicesGroup.add(m);
+  }
+  updateStatus();
+}
+
+function updateStatus() {
+  const k = taken.length;
+  const g = (a, b) => b ? g(b, a % b) : a;
+  const d = g(k, n) || 1;
+  let s = `拿走了 ${k} 块 → ${k}/${n}`;
+  if (k > 0 && d > 1) s += ` = ${k / d}/${n / d}`;
+  if (k === n) s += '(整个披萨都是你的啦!)';
+  else if (k === 0) s = '点一块披萨把它拿走,看看剩下几分之几';
+  else s += `,盘子里还剩 ${n - k}/${n}`;
+  Lab.status(s);
+}
+
+const ray = new THREE.Raycaster(), ndc = new THREE.Vector2();
+let downX = 0, downY = 0;
+renderer.domElement.addEventListener('pointerdown', e => { downX = e.clientX; downY = e.clientY; });
+renderer.domElement.addEventListener('pointerup', e => {
+  if (Math.hypot(e.clientX - downX, e.clientY - downY) > 8) return;
+  ndc.set(e.clientX / innerWidth * 2 - 1, -(e.clientY / innerHeight) * 2 + 1);
+  ray.setFromCamera(ndc, camera);
+  const hit = ray.intersectObjects(slicesGroup.children, false)[0];
+  if (!hit) return;
+  const m = hit.object, i = m.userData.i;
+  if (!taken.includes(i)) {
+    taken.push(i);
+    // 拿走:飞起来变小
+    m.userData.fly = 1;
+  } else {
+    taken = taken.filter(x => x !== i);
+    m.userData.fly = 0;
+    m.position.y = 0.12; m.scale.setScalar(1);
+    m.rotation.z = 0;
+  }
+  updateStatus();
+});
+
+document.querySelectorAll('#ctrl button[data-n]').forEach(b => b.onclick = () => {
+  document.querySelectorAll('#ctrl button[data-n]').forEach(x => x.classList.remove('active'));
+  b.classList.add('active');
+  n = +b.dataset.n;
+  buildPizza();
+  Lab.status('披萨切成了 ' + n + ' 等份!每份是 ' + n + ' 分之 1', 2000);
+});
+document.getElementById('reset').onclick = () => buildPizza();
+
+buildPizza();
+
+// 拿走的块飞起动画
+renderer.setAnimationLoop(() => {
+  slicesGroup.children.forEach(m => {
+    const target = m.userData.fly ? 1 : 0;
+    const cur = m.userData.k || 0;
+    const next = cur + (target - cur) * 0.12;
+    m.userData.k = next;
+    if (target === 1) {
+      const seg = Math.PI * 2 / n;
+      const mid = m.userData.i * seg + seg / 2;
+      m.position.set(Math.sin(mid) * next * 2.2, 0.12 + next * 1.4, Math.cos(mid) * next * 2.2);
+      m.scale.setScalar(1 - next * 0.35);
+      m.rotation.z = next * 0.6;
+    }
+  });
+  controls.update();
+  renderer.render(scene, camera);
+});
+
+Lab.fact([
+  { t: '什么是分数', d: '把一个整体平均分成几份,取其中的几份,就是分数。切成 4 块拿走 1 块,就是 4 分之 1,写作 1/4。' },
+  { t: '分数一样大?', d: '2/8 和 1/4 一样大!同样的披萨,切得越细,块数越多,但拿走的一半还是一半。这叫等值分数。' },
+  { t: '分母与分子', d: '分数线下面的数叫分母(切成几块),上面的叫分子(拿了几块)。分母越大,每一块越小哦!' },
+]);
+Lab.quiz([
+  { q: '披萨平均切成 6 块,拿走 2 块,拿走的是几分之几?', opt: ['2/6', '6/2', '1/6'], a: 0, why: '拿走 2 块就是 2/6,而且 2/6 还可以约分成 1/3 哦!' },
+  { q: '3/6 和 1/2 谁大?', opt: ['3/6 大', '1/2 大', '一样大'], a: 2, why: '3/6 约分后就是 1/2,拿走半张披萨,怎么切都是一半!' },
+  { q: '把披萨切成 8 块和切成 4 块,哪种每块更大?', opt: ['8 块的大', '4 块的大', '一样大'], a: 1, why: '切的块数越多,每块越小:1/4 比 1/8 大!' },
+]);
+</script>
+</body>
+</html>
