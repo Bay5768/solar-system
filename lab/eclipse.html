@@ -24,7 +24,7 @@ window.THREE = THREE;
 
 Lab.init({ title: '🌑 日食和月食', tag: '科学', hint: '拖动月亮位置 · 拖拽旋转视角 · 等着看影子咬住地球!' });
 
-const { renderer, scene, camera, controls } = Lab.scene3d({ orbit: OrbitControls, cam: [2, 9, 15] });
+const { renderer, scene, camera, controls } = Lab.scene3d({ orbit: OrbitControls, cam: [3.5, 9, 15] });
 scene.add(new THREE.AmbientLight(0x556688, 0.5));
 const sunLight = new THREE.DirectionalLight(0xfff2d8, 2.2);
 scene.add(sunLight);
@@ -78,7 +78,7 @@ function shadowCone(rBase, len, color) {
   return m;
 }
 const earthShadow = shadowCone(EARTH_R * 1.05, 14, 0x223377);
-const moonShadow = shadowCone(MOON_R * 1.05, MOON_ORBIT + EARTH_R + 1.2, 0x223377);
+const moonShadow = shadowCone(MOON_R * 1.05, MOON_ORBIT * 0.92, 0x223377);
 function aimCone(cone, bodyPos) {
   const antiSun = bodyPos.clone().sub(sun.position).normalize();
   cone.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), antiSun);
@@ -102,8 +102,8 @@ function update() {
 
   const d = Math.abs(((ma % 360) + 360) % 360);
   let msg, big = false;
-  if (d < 9 || d > 351) { msg = '🌑 日食啦!月亮的影子罩住了地球,白天变黑了!'; big = true; }
-  else if (d > 171 && d < 189) { msg = '🌖 月食啦!月亮钻进了地球的影子,变成了红铜色!'; big = true; }
+  if (d < 4 || d > 356) { msg = '🌑 日食啦!月亮的影子罩住了地球,白天变黑了!'; big = true; }
+  else if (d > 176 && d < 184) { msg = '🌖 月食啦!月亮钻进了地球的影子,变成了红铜色!'; big = true; }
   else msg = '一切正常 · 拖动月亮位置,试试 0° 或 180° 会发生什么';
   Lab.status(msg);
   document.getElementById('status').style.background = big ? 'rgba(226,68,68,0.9)' : 'rgba(240,152,58,0.85)';
@@ -119,8 +119,8 @@ Lab.fact([
 ]);
 Lab.quiz([
   { q: '日食发生时,三个天体的排列顺序是?', opt: ['太阳-地球-月亮', '太阳-月亮-地球', '月亮-太阳-地球'], a: 1, why: '月亮夹在中间,把太阳光挡住了,它的影子落在地球上,就是日食!' },
-  { q: '月食时月亮为什么会变成红铜色?', opt: ['月亮着火了', '地球大气把红光折射到月亮上', '它变成了 Mars'], a: 1, why: '地球的大气层像棱镜,把太阳光中的红光弯折到月亮上,月亮就"红"了!' },
-  { q: '为什么不是每个月都发生日食和月食?', opt: ['月亮 sometimes 偷懒', '月亮轨道是斜的,影子经常错开', '太阳会躲开'], a: 1, why: '月亮的轨道面和地球公转面差了大约5°,影子常常擦肩而过,所以日食很珍贵!' },
+  { q: '月食时月亮为什么会变成红铜色?', opt: ['月亮着火了', '地球大气把红光折射到月亮上', '月亮变成了火星'], a: 1, why: '地球的大气层像棱镜,把太阳光中的红光弯折到月亮上,月亮就"红"了!' },
+  { q: '为什么不是每个月都发生日食和月食?', opt: ['月亮躲起来了', '月亮轨道是斜的,影子经常错开', '太阳会躲开'], a: 1, why: '月亮的轨道面和地球公转面差了大约5°,影子常常擦肩而过,所以日食很珍贵!' },
 ]);
 
 renderer.setAnimationLoop(() => {
