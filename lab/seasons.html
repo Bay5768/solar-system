@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<title>四季的秘密 · 3D科学教室</title>
+</head>
+<body>
+<div id="app"></div>
+<div id="status" class="hidden"></div>
+<div id="ctrl" class="panel">
+  <label><input type="checkbox" id="auto" checked>自动公转</label>
+  <label>位置 <input type="range" id="th" min="0" max="360" step="0.5" value="45"><span class="val" id="seasonVal">春分</span></label>
+  <label><input type="checkbox" id="spin" checked>地球自转</label>
+</div>
+
+<script src="common.js"></script>
+<script type="importmap">
+{ "imports": { "three": "../vendor/three.module.min.js", "three/addons/": "../vendor/" } }
+</script>
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+window.THREE = THREE;
+
+Lab.init({ title: '🍂 四季的秘密', tag: '科学', hint: '拖动位置或自动公转 · 拖拽旋转视角' });
+
+const { renderer, scene, camera, controls } = Lab.scene3d({ orbit: OrbitControls, cam: [0, 8, 14] });
+scene.add(new THREE.AmbientLight(0x5566aa, 0.45));
+const sunLight = new THREE.DirectionalLight(0xfff2d8, 2.4);
+scene.add(sunLight); // 方向每帧指向地球
+Lab.stars(scene, 800);
+
+// 太阳
+const sun = new THREE.Mesh(new THREE.SphereGeometry(1.6, 32, 16), new THREE.MeshBasicMaterial({ color: 0xffdf8a }));
+scene.add(sun);
+const glow = new THREE.Sprite(new THREE.SpriteMaterial({
+  map: Lab.softDot(), color: 0xffcf7a, blending: THREE.AdditiveBlending, transparent: true, depthWrite: false
+}));
+glow.position.set(0, 0, 0); glow.scale.setScalar(11); scene.add(glow);
+
+// 地球(带 23.4° 倾角,方向始终指向同一侧——这是四季的关键!)
+const R = 0.85, ORBIT = 7.5, TILT = 23.4 * Math.PI / 180;
+const earthGroup = new THREE.Group();     // 位置 = 轨道
+const tiltGroup = new THREE.Group();      // 倾斜
+tiltGroup.rotation.z = TILT;
+const earth = new THREE.Mesh(
+  new THREE.SphereGeometry(R, 48, 24),
+  new THREE.MeshStandardMaterial({ map: Lab.earthTexture(), roughness: 1 })
+);
+tiltGroup.add(earth);
+// 地轴线(红)与赤道(蓝)
+tiltGroup.add(new THREE.Line(
+  new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(0, -1.5, 0), new THREE.Vector3(0, 1.5, 0)]),
+  new THREE.LineBasicMaterial({ color: 0xff5a5a })
+));
+tiltGroup.add(new THREE.LineLoop(
+  new THREE.BufferGeometry().setFromPoints(Array.from({ length: 64 }, (_, i) =>
+    new THREE.Vector3(Math.cos(i / 64 * Math.PI * 2) * R * 1.001, 0, Math.sin(i / 64 * Math.PI * 2) * R * 1.001))),
+  new THREE.LineBasicMaterial({ color: 0x6ab0ff })
+));
+earthGroup.add(tiltGroup);
+scene.add(earthGroup);
+// 赤道面参考环(灰色,固定不倾斜——对比地轴的倾斜)
+scene.add(new THREE.LineLoop(
+  new THREE.BufferGeometry().setFromPoints(Array.from({ length: 96 }, (_, i) =>
+    new THREE.Vector3(Math.cos(i / 96 * Math.PI * 2) * ORBIT, 0, Math.sin(i / 96 * Math.PI * 2) * ORBIT))),
+  new THREE.LineBasicMaterial({ color: 0x5577bb, transparent: true, opacity: 0.4 })
+));
+// 直射点标记(小红球+光线)
+const mark = new THREE.Mesh(new THREE.SphereGeometry(0.1, 12, 8), new THREE.MeshBasicMaterial({ color: 0xff4040 }));
+scene.add(mark);
+const rayLine = new THREE.Line(
+  new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(), new THREE.Vector3()]),
+  new THREE.LineBasicMaterial({ color: 0xffd04a, transparent: true, opacity: 0.8 })
+);
+scene.add(rayLine);
+
+// 文字精灵
+function textSprite(text, color = '#ffe9a8') {
+  const c = document.createElement('canvas'); c.width = 256; c.height = 96;
+  const ctx = c.getContext('2d');
+  ctx.font = 'bold 56px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.shadowColor = 'rgba(0,0,0,0.9)'; ctx.shadowBlur = 8;
+  ctx.fillStyle = color; ctx.fillText(text, 128, 52);
+  const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: Lab.toTexture(c), transparent: true, depthWrite: false }));
+  sp.scale.set(2.6, 0.975, 1);
+  return sp;
+}
+[['春分', 45], ['夏至', 135], ['秋分', 225], ['冬至', 315]].forEach(([t, deg]) => {
+  const a = deg / 180 * Math.PI;
+  const sp = textSprite(t, t === '夏至' ? '#ff8787' : t === '冬至' ? '#74c0fc' : '#ffe9a8');
+  sp.position.set(Math.cos(a) * (ORBIT + 1.6), 0, Math.sin(a) * (ORBIT + 1.6));
+  scene.add(sp);
+});
+
+const axisUnit = new THREE.Vector3(Math.sin(TILT), Math.cos(TILT), 0);
+const SEASONS = [['冬 ❄️', -45, 45], ['春 🌸', 45, 135], ['夏 ☀️', 135, 225], ['秋 🍁', 225, 315]];
+function seasonOf(deg) {
+  for (const [s, a, b] of SEASONS) {
+    if (a < b ? (deg >= a && deg < b) : (deg >= a || deg < b)) return s;
+  }
+}
+function update(deg) {
+  const th = deg / 180 * Math.PI;
+  earthGroup.position.set(Math.cos(th) * ORBIT, 0, -Math.sin(th) * ORBIT);
+  sunLight.position.copy(earthGroup.position);
+  // 直射点
+  const sunDir = sun.position.clone().sub(earthGroup.position).normalize();
+  mark.position.copy(earthGroup.position).addScaledVector(sunDir, R * 1.01);
+  rayLine.geometry.setFromPoints([sun.position.clone(), mark.position.clone()]);
+  // 直射纬度 = 太阳方向与赤道面夹角
+  const lat = Math.asin(THREE.MathUtils.clamp(sunDir.dot(axisUnit), -1, 1)) * 180 / Math.PI;
+  const ns = seasonOf(deg);
+  const south = { '春': '秋', '夏': '冬', '秋': '春', '冬': '夏' }[ns[0]];
+  Lab.status(`北半球:${ns} ${south ? '· 南半球:' + south + (south === '夏' ? ' ☀️' : south === '冬' ? ' ❄️' : '') : ''} · 阳光直射北纬 ${lat.toFixed(1)}°`);
+  document.getElementById('seasonVal').textContent = deg % 90 === 0 ? ['春分', '夏至', '秋分', '冬至'][deg / 90] : ns[0];
+}
+const thEl = document.getElementById('th');
+thEl.oninput = () => { document.getElementById('auto').checked = false; update(+thEl.value); };
+update(45);
+
+Lab.fact([
+  { t: '四季的真正原因', d: '地球的自转轴是歪的,大约斜 23.4°,而且方向永远指向同一边。公转时,有时北半球朝太阳歪,有时南半球朝太阳歪!' },
+  { t: '直射点决定冷热', d: '阳光直射哪里,哪里就更热。夏天阳光直射北半球,晒得厉害;冬天阳光斜着照过来,又弱又冷。' },
+  { t: '常见误解', d: '四季不是因为她离太阳忽近忽远!其实冬天地球反而离太阳更近一点。南半球的季节和北半球正好相反:我们穿棉袄时,澳大利亚人在游泳!' },
+]);
+Lab.quiz([
+  { q: '夏天热,是因为地球离太阳更近吗?', opt: ['是', '不是', '看年份'], a: 1, why: '不是!四季是因为地轴倾斜、阳光直射点移动。冬天时地球其实离太阳更近一点。' },
+  { q: '北半球过夏天时,南半球的澳大利亚是什么季节?', opt: ['也是夏天', '是冬天', '没有季节'], a: 1, why: '南半球和北半球季节正好相反,我们过春节放鞭炮时,他们在过夏天!' },
+  { q: '夏至那天,阳光直射在哪里?', opt: ['赤道', '北回归线(北纬23.4°)', '南极'], a: 1, why: '夏至阳光直射北回归线,之后直射点往南走,天气慢慢变凉。' },
+]);
+
+let th = 45;
+renderer.setAnimationLoop(() => {
+  if (document.getElementById('auto').checked) {
+    th = (th + 0.15) % 360;
+    thEl.value = th;
+    update(th);
+  }
+  if (document.getElementById('spin').checked) earth.rotation.y += 0.02;
+  controls.update();
+  renderer.render(scene, camera);
+});
+</script>
+</body>
+</html>
