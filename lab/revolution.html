@@ -42,9 +42,9 @@ scene.add(axis);
 
 // 四种平面图形的轮廓点(x=离轴半径, y=高度),围绕 Y 轴旋转
 const SHAPES = [
-  { name: '长方形 → 圆柱', pts: [[0.4, -0.9], [1.4, -0.9], [1.4, 0.9], [0.4, 0.9]], solid: '圆柱' },
+  { name: '长方形 → 圆柱', pts: [[0.05, -0.9], [1.4, -0.9], [1.4, 0.9], [0.05, 0.9]], solid: '圆柱' },
   { name: '直角三角形 → 圆锥', pts: [[0.05, -1.2], [1.5, -1.2], [0.05, 1.2]], solid: '圆锥' },
-  { name: '梯形 → 圆台', pts: [[0.5, -1], [1.5, -1], [1.1, 1], [0.5, 1]], solid: '圆台' },
+  { name: '梯形 → 圆台', pts: [[0.05, -1], [1.5, -1], [1.1, 1], [0.05, 1]], solid: '圆台' },
   { name: '半圆 → 球', pts: Array.from({ length: 25 }, (_, i) => {
       const a = -Math.PI / 2 + i / 24 * Math.PI;
       return [Math.cos(a) * 1.25 + 0.001, Math.sin(a) * 1.25];
@@ -105,6 +105,7 @@ document.querySelectorAll('#ctrl button[data-s]').forEach(b => b.onclick = () =>
   b.classList.add('active');
   cur = +b.dataset.s;
   buildShape(cur);
+  document.getElementById('ang').value = 0;
 });
 document.getElementById('ang').oninput = e => setAngle(+e.target.value);
 
@@ -120,7 +121,7 @@ Lab.fact([
 Lab.quiz([
   { q: '直角三角形绕直角边转一圈,会变成什么?', opt: ['圆柱', '圆锥', '球'], a: 1, why: '尖尖朝上的三角形转起来,就是冰淇淋筒一样的圆锥!' },
   { q: '半圆形绕直径转一圈,变成什么?', opt: ['圆锥', '圆台', '球'], a: 2, why: '半个圆转一圈,拼成一个完整的球,像把两个半球扣在一起!' },
-  { q: '长方形离轴远的那条边,转出来的是圆柱的哪个部分?', opt: ['侧面', '底面', '顶点'], a: 0, why: '离轴的边转出的曲面就是圆柱的侧面,靠轴的边转出的是底面(圆)。' },
+  { q: '长方形离轴远的那条边,转出来的是圆柱的哪个部分?', opt: ['侧面', '底面', '顶点'], a: 0, why: '垂直于轴的两条边扫出上下的底面(圆),平行于轴的边扫出侧面。' },
 ]);
 
 renderer.setAnimationLoop(() => {
