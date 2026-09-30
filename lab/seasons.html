@@ -26,7 +26,7 @@ window.THREE = THREE;
 Lab.init({ title: '🍂 四季的秘密', tag: '科学', hint: '拖动位置或自动公转 · 拖拽旋转视角' });
 
 const { renderer, scene, camera, controls } = Lab.scene3d({ orbit: OrbitControls, cam: [0, 8, 14] });
-scene.add(new THREE.AmbientLight(0x5566aa, 0.45));
+scene.add(new THREE.AmbientLight(0x5566aa, 0.7));
 const sunLight = new THREE.DirectionalLight(0xfff2d8, 2.4);
 scene.add(sunLight); // 方向每帧指向地球
 Lab.stars(scene, 800);
@@ -37,13 +37,13 @@ scene.add(sun);
 const glow = new THREE.Sprite(new THREE.SpriteMaterial({
   map: Lab.softDot(), color: 0xffcf7a, blending: THREE.AdditiveBlending, transparent: true, depthWrite: false
 }));
-glow.position.set(0, 0, 0); glow.scale.setScalar(11); scene.add(glow);
+glow.position.set(0, 0, 0); glow.scale.setScalar(6.5); scene.add(glow);
 
 // 地球(带 23.4° 倾角,方向始终指向同一侧——这是四季的关键!)
 const R = 0.85, ORBIT = 7.5, TILT = 23.4 * Math.PI / 180;
 const earthGroup = new THREE.Group();     // 位置 = 轨道
-const tiltGroup = new THREE.Group();      // 倾斜
-tiltGroup.rotation.z = TILT;
+const tiltGroup = new THREE.Group();      // 倾斜:轴向 (1,0,1)/√2 方向倾斜,与节气标注一致
+tiltGroup.setRotationFromAxisAngle(new THREE.Vector3(1, 0, -1).normalize(), TILT);
 const earth = new THREE.Mesh(
   new THREE.SphereGeometry(R, 48, 24),
   new THREE.MeshStandardMaterial({ map: Lab.earthTexture(), roughness: 1 })
@@ -90,12 +90,13 @@ function textSprite(text, color = '#ffe9a8') {
 [['春分', 45], ['夏至', 135], ['秋分', 225], ['冬至', 315]].forEach(([t, deg]) => {
   const a = deg / 180 * Math.PI;
   const sp = textSprite(t, t === '夏至' ? '#ff8787' : t === '冬至' ? '#74c0fc' : '#ffe9a8');
-  sp.position.set(Math.cos(a) * (ORBIT + 1.6), 0, Math.sin(a) * (ORBIT + 1.6));
+  sp.position.set(Math.cos(a) * (ORBIT + 1.6), 0, -Math.sin(a) * (ORBIT + 1.6));
   scene.add(sp);
 });
 
-const axisUnit = new THREE.Vector3(Math.sin(TILT), Math.cos(TILT), 0);
-const SEASONS = [['冬 ❄️', -45, 45], ['春 🌸', 45, 135], ['夏 ☀️', 135, 225], ['秋 🍁', 225, 315]];
+const S = Math.SQRT1_2 * Math.sin(TILT);
+const axisUnit = new THREE.Vector3(S, Math.cos(TILT), S);
+const SEASONS = [['春 🌸', 45, 135], ['夏 ☀️', 135, 225], ['秋 🍁', 225, 315], ['冬 ❄️', 315, 45]];
 function seasonOf(deg) {
   for (const [s, a, b] of SEASONS) {
     if (a < b ? (deg >= a && deg < b) : (deg >= a || deg < b)) return s;
@@ -113,8 +114,10 @@ function update(deg) {
   const lat = Math.asin(THREE.MathUtils.clamp(sunDir.dot(axisUnit), -1, 1)) * 180 / Math.PI;
   const ns = seasonOf(deg);
   const south = { '春': '秋', '夏': '冬', '秋': '春', '冬': '夏' }[ns[0]];
-  Lab.status(`北半球:${ns} ${south ? '· 南半球:' + south + (south === '夏' ? ' ☀️' : south === '冬' ? ' ❄️' : '') : ''} · 阳光直射北纬 ${lat.toFixed(1)}°`);
-  document.getElementById('seasonVal').textContent = deg % 90 === 0 ? ['春分', '夏至', '秋分', '冬至'][deg / 90] : ns[0];
+  const latText = (lat >= 0 ? '北纬' : '南纬') + Math.abs(lat).toFixed(1) + '°';
+  Lab.status(`北半球:${ns} · 南半球:${south} · 阳光直射${latText}`);
+  const JIE = { 45: '春分', 135: '夏至', 225: '秋分', 315: '冬至' };
+  document.getElementById('seasonVal').textContent = JIE[deg] || ns[0];
 }
 const thEl = document.getElementById('th');
 thEl.oninput = () => { document.getElementById('auto').checked = false; update(+thEl.value); };
