@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<title>彩虹的秘密 · 3D科学教室</title>
+</head>
+<body>
+<div id="app"></div>
+<div id="status" class="hidden"></div>
+<div id="ctrl" class="panel">
+  <label>手电筒高度 <input type="range" id="h" min="0" max="100" value="40"><span class="val" id="hVal">40%</span></label>
+  <label><input type="checkbox" id="arc">雨后天空模式 🌧️→🌈</label>
+</div>
+
+<script src="common.js"></script>
+<script type="importmap">
+{ "imports": { "three": "../vendor/three.module.min.js", "three/addons/": "../vendor/" } }
+</script>
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+window.THREE = THREE;
+
+Lab.init({ title: '🌈 彩虹的秘密', tag: '科学', hint: '拖动滑块移动光束 · 拖拽旋转视角' });
+
+const { renderer, scene, camera, controls } = Lab.scene3d({ orbit: OrbitControls, cam: [0, 3, 11] });
+scene.background = new THREE.Color(0x0a0e1c);
+scene.add(new THREE.AmbientLight(0x8899bb, 0.6));
+const dl = new THREE.DirectionalLight(0xffffff, 1); dl.position.set(3, 6, 5); scene.add(dl);
+
+const ground = new THREE.Mesh(new THREE.CircleGeometry(30, 48), new THREE.MeshStandardMaterial({ color: 0x101828, roughness: 1 }));
+ground.rotation.x = -Math.PI / 2; ground.position.y = -3; scene.add(ground);
+
+// 三棱镜(玻璃质感)
+const prismShape = new THREE.Shape([
+  new THREE.Vector2(-2, 0), new THREE.Vector2(2, 0), new THREE.Vector2(0, 3)
+]);
+const prism = new THREE.Mesh(
+  new THREE.ExtrudeGeometry(prismShape, { depth: 2.4, bevelEnabled: false }),
+  new THREE.MeshPhysicalMaterial({
+    color: 0xbfe3ff, transparent: true, opacity: 0.32, roughness: 0.05,
+    metalness: 0, transmission: 0.7, side: THREE.DoubleSide
+  })
+);
+prism.position.set(0, 0, -1.2); // 三角面朝向镜头,光束在 z=0 平面穿过
+scene.add(prism);
+
+// 小手电筒
+const torch = new THREE.Group();
+torch.add(new THREE.Mesh(new THREE.CylinderGeometry(0.28, 0.34, 0.8, 16), new THREE.MeshStandardMaterial({ color: 0x8899aa, metalness: 0.6, roughness: 0.3 })));
+const lens = new THREE.Mesh(new THREE.CircleGeometry(0.26, 16), new THREE.MeshBasicMaterial({ color: 0xffffff }));
+lens.rotation.x = Math.PI / 2; lens.position.y = 0.42;
+torch.add(lens);
+torch.rotation.x = Math.PI / 2; // 筒口朝 +x
+scene.add(torch);
+
+// 光束工具:在 a、b 间放一根发光细圆柱
+function beam(a, b, radius, color, opacity = 0.85) {
+  const dir = new THREE.Vector3().subVectors(b, a);
+  const len = dir.length();
+  const m = new THREE.Mesh(
+    new THREE.CylinderGeometry(radius, radius, len, 10, 1, true),
+    new THREE.MeshBasicMaterial({ color, transparent: true, opacity, blending: THREE.AdditiveBlending, depthWrite: false })
+  );
+  m.position.copy(a).addScaledVector(dir, 0.5);
+  m.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), dir.normalize());
+  return m;
+}
+const beamsGroup = new THREE.Group();
+scene.add(beamsGroup);
+const COLORS7 = [0xff4040, 0xff9f40, 0xffe940, 0x51cf66, 0x4dabf7, 0x748ffc, 0xc084fc];
+const CN7 = ['红', '橙', '黄', '绿', '蓝', '靛', '紫'];
+
+function rebuild(h01) {
+  beamsGroup.clear();
+  document.getElementById('hVal').textContent = Math.round(h01 * 100) + '%';
+  // 入射点在棱镜左斜面上,出射点在右斜面上(都按三角形边线计算)
+  const inY = 1.9 - h01 * 1.1, inX = -2 + inY * (2 / 3);
+  const outY = inY - 0.35, outX = 2 - outY * (2 / 3);
+  const src = new THREE.Vector3(-7.5, inY + 0.25, 0);
+  torch.position.copy(src).add(new THREE.Vector3(-0.4, -0.05, 0));
+  torch.rotation.z = 0;
+  const inPt = new THREE.Vector3(inX, inY, 0);
+  const outPt = new THREE.Vector3(outX, outY, 0);
+  beamsGroup.add(beam(src, inPt, 0.09, 0xffffff));
+  beamsGroup.add(beam(inPt, outPt, 0.07, 0xffffff, 0.5)); // 玻璃内部
+  // 七色出射光扇形散开(微微向下,不会被地面吞掉)
+  const baseA = -0.14 - h01 * 0.22;
+  COLORS7.forEach((col, i) => {
+    const a = baseA - i * 0.052;
+    const dir = new THREE.Vector3(Math.cos(a), Math.sin(a), 0);
+    beamsGroup.add(beam(outPt, outPt.clone().addScaledVector(dir, 7.5), 0.055, col, 0.8));
+  });
+}
+rebuild(0.4);
+document.getElementById('h').oninput = e => rebuild(+e.target.value / 100);
+
+// 雨后天空模式:大彩虹(7 色半圆环)+ 雨云
+const skyGroup = new THREE.Group();
+skyGroup.visible = false;
+scene.add(skyGroup);
+const ARC = new THREE.Vector3(0, -3, -9);
+COLORS7.forEach((col, i) => {
+  const t = new THREE.Mesh(
+    new THREE.TorusGeometry(9 + (6 - i) * 0.28, 0.14, 8, 100, Math.PI),
+    new THREE.MeshBasicMaterial({ color: col, transparent: true, opacity: 0.85 })
+  );
+  t.position.copy(ARC);
+  skyGroup.add(t);
+});
+// 几朵小雨云
+for (let i = 0; i < 3; i++) {
+  const cl = new THREE.Group();
+  [[0, 0, 0.8], [0.7, 0.1, 0.6], [-0.7, 0.05, 0.65]].forEach(([x, y, r]) => {
+    cl.add(new THREE.Mesh(new THREE.SphereGeometry(r, 16, 10), new THREE.MeshStandardMaterial({ color: 0xdde6f2, roughness: 1 })));
+  });
+  cl.position.set(-7 + i * 7, 6.5 + (i % 2) * 0.8, -6);
+  skyGroup.add(cl);
+}
+document.getElementById('arc').onchange = e => {
+  skyGroup.visible = e.target.checked;
+  scene.background = new THREE.Color(e.target.checked ? 0x16233d : 0x0a0e1c);
+  if (e.target.checked) Lab.status('雨停了,太阳出来,背对太阳看——彩虹出现!', 3000);
+};
+
+Lab.fact([
+  { t: '白光是混合光', d: '手电筒的白光其实是七种颜色混在一起的!红橙黄绿蓝靛紫,一个都不少。' },
+  { t: '折射把颜色分开', d: '光从空气进入玻璃会拐弯(折射),七种颜色拐弯的幅度不一样:紫光拐得最厉害,红光最不厉害,于是被拆开了。' },
+  { t: '天上的彩虹', d: '雨后的空气里飘着无数小水滴,每一颗都是小棱镜!阳光钻进去再出来,就被拆成七色。所以看彩虹要背对太阳哦。' },
+]);
+Lab.quiz([
+  { q: '白光通过三棱镜后会变成什么?', opt: ['消失', '七种颜色', '更亮白光'], a: 1, why: '白光是混合光,经过折射被拆成红橙黄绿蓝靛紫,这叫色散!' },
+  { q: '七种颜色中,哪种光拐弯最厉害?', opt: ['红光', '绿光', '紫光'], a: 2, why: '紫光折射得最厉害,红光最不厉害,所以彩虹里红色总是在最外圈。' },
+  { q: '什么时候最容易看到彩虹?', opt: ['大晴天中午', '雨后出太阳,背对太阳看', '深夜'], a: 1, why: '空气中的小水滴+阳光=彩虹!记住要背对太阳站着看。' },
+]);
+
+renderer.setAnimationLoop(() => {
+  beamsGroup.children.forEach((b, i) => {
+    b.material.opacity = 0.55 + 0.3 * Math.sin(performance.now() / 300 + i);
+  });
+  controls.update();
+  renderer.render(scene, camera);
+});
+</script>
+</body>
+</html>
