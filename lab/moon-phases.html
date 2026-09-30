@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<title>月亮变脸记 · 3D科学教室</title>
+</head>
+<body>
+<div id="app"></div>
+<div id="status" class="hidden"></div>
+<div id="ctrl" class="panel">
+  <label><input type="checkbox" id="auto" checked>自动演示</label>
+  <label>日期(农历)<input type="range" id="day" min="0" max="29.5" step="0.05" value="0"><span class="val" id="dayVal">初一</span></label>
+</div>
+<!-- 从地球看到的月亮(小窗) -->
+<div style="position:fixed;right:14px;bottom:14px;z-index:18;" class="panel">
+  <canvas id="moonEye" width="150" height="150" style="display:block;border-radius:12px;background:#0b1020"></canvas>
+  <div style="text-align:center;font-size:11px;color:#9db1d8;padding:5px 0;">🔭 从地球看到的月亮</div>
+</div>
+
+<script src="common.js"></script>
+<script type="importmap">
+{ "imports": { "three": "../vendor/three.module.min.js", "three/addons/": "../vendor/" } }
+</script>
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+window.THREE = THREE;
+
+Lab.init({ title: '🌙 月亮变脸记', tag: '科学', hint: '拖动日期或自动演示 · 拖拽旋转视角' });
+
+const { renderer, scene, camera, controls } = Lab.scene3d({ orbit: OrbitControls, cam: [0, 9, 13] });
+controls.target.set(0, 0, 0);
+scene.add(new THREE.AmbientLight(0x5566aa, 0.5));
+// 太阳光从左边来
+const sunLight = new THREE.DirectionalLight(0xfff2d8, 2.2);
+sunLight.position.set(-20, 2, 0);
+scene.add(sunLight);
+Lab.stars(scene, 800);
+// 远处的太阳(发光球)
+const sun = new THREE.Mesh(new THREE.SphereGeometry(2.2, 32, 16), new THREE.MeshBasicMaterial({ color: 0xffe9a8 }));
+sun.position.set(-26, 0, 0); scene.add(sun);
+const glow = new THREE.Sprite(new THREE.SpriteMaterial({
+  map: Lab.softDot(), color: 0xffcf7a, blending: THREE.AdditiveBlending, transparent: true, depthWrite: false
+}));
+glow.position.copy(sun.position); glow.scale.setScalar(16); scene.add(glow);
+
+// 地球
+const earth = new THREE.Mesh(
+  new THREE.SphereGeometry(0.9, 48, 24),
+  new THREE.MeshStandardMaterial({ map: Lab.earthTexture(), roughness: 1 })
+);
+scene.add(earth);
+// 月球轨道
+const orbitLine = new THREE.LineLoop(
+  new THREE.BufferGeometry().setFromPoints(
+    Array.from({ length: 96 }, (_, i) => new THREE.Vector3(Math.cos(i / 96 * Math.PI * 2) * 5, 0, Math.sin(i / 96 * Math.PI * 2) * 5))
+  ),
+  new THREE.LineBasicMaterial({ color: 0x5577bb, transparent: true, opacity: 0.4 })
+);
+scene.add(orbitLine);
+// 月球
+const moon = new THREE.Mesh(
+  new THREE.SphereGeometry(0.45, 32, 16),
+  new THREE.MeshStandardMaterial({ map: Lab.craterTexture(99, 0xb8b4ae, 0x6e6a64, 70), roughness: 1 })
+);
+scene.add(moon);
+
+const NAMES = ['新月(朔)', '娥眉月', '上弦月', '盈凸月', '满月(望)', '亏凸月', '下弦月', '残月'];
+const DAYS = ['初一', '初二', '初三', '初四', '初五', '初六', '初七', '初八', '初九', '初十',
+  '十一', '十二', '十三', '十四', '十五', '十六', '十七', '十八', '十九', '二十',
+  '廿一', '廿二', '廿三', '廿四', '廿五', '廿六', '廿七', '廿八', '廿九', '三十'];
+
+let day = 0;
+const dayEl = document.getElementById('day'), eye = document.getElementById('moonEye').getContext('2d');
+
+function phaseName(phi) {
+  const idx = Math.round(phi / (Math.PI / 4)) % 8;
+  return NAMES[idx];
+}
+function update() {
+  const phi = day / 29.5 * Math.PI * 2;       // 0=新月
+  const ang = phi + Math.PI;                  // 新月时月亮在地球-太阳一侧(-x 方向)
+  moon.position.set(Math.cos(ang) * 5, 0, Math.sin(ang) * 5);
+  moon.rotation.y = -phi;                     // 潮汐锁定:始终同一面朝地球
+  earth.rotation.y += 0.004;
+  document.getElementById('dayVal').textContent = DAYS[Math.min(29, Math.floor(day))] + ' · ' + phaseName(phi);
+  Lab.status(`农历 ${DAYS[Math.min(29, Math.floor(day))]} · ${phaseName(phi)}`);
+  drawEye(phi);
+}
+// 画"从地球看到的月亮"
+function drawEye(phi) {
+  const r = 52, cx = 75, cy = 70;
+  eye.clearRect(0, 0, 150, 150);
+  // 暗面
+  eye.fillStyle = '#232840';
+  eye.beginPath(); eye.arc(cx, cy, r, 0, Math.PI * 2); eye.fill();
+  // 亮面
+  eye.fillStyle = '#ffe9a8';
+  const waxing = phi < Math.PI, cosv = Math.cos(phi);
+  eye.beginPath();
+  eye.arc(cx, cy, r, -Math.PI / 2, Math.PI / 2, !waxing);
+  eye.fill();
+  if (cosv > 0.001) {          // 弯月:亮侧再盖一块暗椭圆
+    eye.fillStyle = '#232840';
+    eye.beginPath();
+    eye.ellipse(cx, cy, r * cosv, r, 0, -Math.PI / 2, Math.PI / 2, !waxing);
+    eye.closePath(); eye.fill();
+  } else if (cosv < -0.001) {  // 凸月:暗侧补一块亮椭圆
+    eye.fillStyle = '#ffe9a8';
+    eye.beginPath();
+    eye.ellipse(cx, cy, r * -cosv, r, 0, -Math.PI / 2, Math.PI / 2, waxing);
+    eye.closePath(); eye.fill();
+  }
+  eye.fillStyle = 'rgba(255,255,255,0.65)';
+  eye.font = '12px sans-serif'; eye.textAlign = 'center';
+  eye.fillText(phaseName(phi), cx, 142);
+}
+dayEl.oninput = () => {
+  document.getElementById('auto').checked = false;
+  day = +dayEl.value; update();
+};
+update();
+
+Lab.fact([
+  { t: '月亮为什么会变脸?', d: '月亮自己不发光,我们看到的是它反射的太阳光。月亮绕着地球转,太阳照亮的方向不断变化,我们就看到亮面一会儿多、一会儿少。' },
+  { t: '一个周期 29.5 天', d: '月相从新月变回新月大约要 29.5 天,这就是农历一个月的长度。十五、十六的月亮最圆!' },
+  { t: '上半月亮右边', d: '上弦月的亮面在右边(像字母D),下弦月的亮面在左边(像字母C)。口诀:上上上西西、下下东东!' },
+]);
+Lab.quiz([
+  { q: '新月(初一)时,月亮在哪里?', opt: ['地球和太阳中间', '地球背后', '随便哪里'], a: 0, why: '新月时月亮跑到地球和太阳中间,亮面背对地球,所以我们看不见它。' },
+  { q: '农历十五左右的月亮叫什么?', opt: ['上弦月', '满月', '新月'], a: 1, why: '农历十五、十六是满月(望),月亮把亮面整个对着地球,又大又圆!' },
+  { q: '月亮自己会发光吗?', opt: ['会,像小灯泡', '不会,它反射太阳光', '有时候会'], a: 1, why: '月亮是一面大镜子,把太阳光反射给我们,我们才看得见它。' },
+]);
+
+renderer.setAnimationLoop(() => {
+  if (document.getElementById('auto').checked) {
+    day = (day + 0.05) % 29.5;
+    dayEl.value = day;
+    update();
+  }
+  controls.update();
+  renderer.render(scene, camera);
+});
+</script>
+</body>
+</html>
