@@ -56,7 +56,7 @@
     ov.className = 'overlay hidden';
     ov.innerHTML = `<div class="sheet"><button class="closex">✕</button><h2>💡 知识卡片</h2>` +
       items.map(it => `<div class="fact-item"><b>${it.t}</b><p>${it.d}</p>` +
-        `<button class="speakbtn" data-say="${it.d}">🔊 听一听</button></div>`).join('') + `</div>`;
+        `<button class="speakbtn" data-say="${it.d.replace(/"/g, '&quot;')}">🔊 听一听</button></div>`).join('') + `</div>`;
     document.body.appendChild(ov);
     btn.onclick = () => ov.classList.remove('hidden');
     ov.querySelector('.closex').onclick = () => { ov.classList.add('hidden'); speak(''); };
@@ -71,8 +71,9 @@
     const ov = document.createElement('div');
     ov.className = 'overlay hidden';
     document.body.appendChild(ov);
-    let qi = 0, score = 0, answered = false;
+    let qi = 0, score = 0, answered = false, qTimer = null;
     function render() {
+      if (qTimer) { clearTimeout(qTimer); qTimer = null; }
       answered = false;
       if (qi >= questions.length) {
         const stars = '⭐'.repeat(Math.max(1, Math.round(score / questions.length * 3)));
@@ -101,7 +102,7 @@
         const why = ov.querySelector('#qWhy');
         why.style.display = 'block';
         why.textContent = (i === q.a ? '✅ 答对了! ' : '❌ 正确答案是 ' + 'ABCD'[q.a] + '. ') + (q.why || '');
-        setTimeout(() => { qi++; render(); }, 2200);
+        qTimer = setTimeout(() => { qi++; render(); }, 2200);
       });
     }
     btn.onclick = () => { qi = 0; score = 0; render(); ov.classList.remove('hidden'); };
