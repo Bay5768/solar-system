@@ -66,7 +66,7 @@ const moon = new THREE.Mesh(
 );
 scene.add(moon);
 
-const NAMES = ['新月(朔)', '娥眉月', '上弦月', '盈凸月', '满月(望)', '亏凸月', '下弦月', '残月'];
+const NAMES = ['新月(朔)', '蛾眉月', '上弦月', '盈凸月', '满月(望)', '亏凸月', '下弦月', '残月'];
 const DAYS = ['初一', '初二', '初三', '初四', '初五', '初六', '初七', '初八', '初九', '初十',
   '十一', '十二', '十三', '十四', '十五', '十六', '十七', '十八', '十九', '二十',
   '廿一', '廿二', '廿三', '廿四', '廿五', '廿六', '廿七', '廿八', '廿九', '三十'];
@@ -81,7 +81,7 @@ function phaseName(phi) {
 function update() {
   const phi = day / 29.5 * Math.PI * 2;       // 0=新月
   const ang = phi + Math.PI;                  // 新月时月亮在地球-太阳一侧(-x 方向)
-  moon.position.set(Math.cos(ang) * 5, 0, Math.sin(ang) * 5);
+  moon.position.set(Math.cos(ang) * 5, 0, -Math.sin(ang) * 5);
   moon.rotation.y = -phi;                     // 潮汐锁定:始终同一面朝地球
   earth.rotation.y += 0.004;
   document.getElementById('dayVal').textContent = DAYS[Math.min(29, Math.floor(day))] + ' · ' + phaseName(phi);
