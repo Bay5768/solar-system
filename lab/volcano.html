@@ -27,7 +27,7 @@ Lab.init({ title: '🌋 火山喷发', tag: '科学', hint: '点「喷发」按�
 
 const { renderer, scene, camera, controls } = Lab.scene3d({ orbit: OrbitControls, cam: [6, 5, 9] });
 controls.target.set(0, 1.8, 0);
-scene.add(new THREE.AmbientLight(0xbcc8e8, 0.75));
+scene.add(new THREE.AmbientLight(0xbcc8e8, 0.95));
 const dl = new THREE.DirectionalLight(0xfff2d8, 1.5); dl.position.set(6, 9, 4); scene.add(dl);
 scene.background = new THREE.Color(0x1a2138);
 Lab.stars(scene, 400);
@@ -38,11 +38,14 @@ ground.rotation.x = -Math.PI / 2; scene.add(ground);
 // 火山山体:留出 1/4 缺口的锥体(剖面)
 const CRATER_Y = 4.6, CRATER_R = 0.55, BASE_R = 3.4;
 const cone = new THREE.Mesh(
-  new THREE.ConeGeometry(BASE_R, CRATER_Y, 48, 1, true, Math.PI * 0.12, Math.PI * 1.76),
+  new THREE.CylinderGeometry(CRATER_R, BASE_R, CRATER_Y, 48, 1, true, Math.PI * 0.12, Math.PI * 1.76),
   new THREE.MeshStandardMaterial({ color: 0x6e4f38, roughness: 1, flatShading: true, side: THREE.DoubleSide })
 );
 cone.position.y = CRATER_Y / 2;
-scene.add(cone);
+const volcanoG = new THREE.Group();
+volcanoG.rotation.y = -0.95; // 缺口朝向默认镜头
+scene.add(volcanoG);
+volcanoG.add(cone);
 // 山顶火山口(暗红边缘)
 const craterRing = new THREE.Mesh(
   new THREE.TorusGeometry(CRATER_R, 0.16, 10, 32),
@@ -50,7 +53,7 @@ const craterRing = new THREE.Mesh(
 );
 craterRing.rotation.x = Math.PI / 2;
 craterRing.position.y = CRATER_Y;
-scene.add(craterRing);
+volcanoG.add(craterRing);
 
 // 剖面贴图:画出岩浆房与通道
 function cutawayTexture() {
@@ -88,7 +91,7 @@ function cutFace(theta) {
 }
 cutGroup.add(cutFace(Math.PI * 0.12));
 cutGroup.add(cutFace(Math.PI * 1.88));
-scene.add(cutGroup);
+volcanoG.add(cutGroup);
 document.getElementById('cut').onchange = e => cutGroup.visible = e.target.checked;
 
 // 文字标注
@@ -103,8 +106,8 @@ function textSprite(text, color = '#ffd68a', size = 1.4) {
   return sp;
 }
 const lblCrater = textSprite('火山口', '#ffd68a'); lblCrater.position.set(0, CRATER_Y + 0.9, 0); scene.add(lblCrater);
-const lblRoom = textSprite('岩浆房', '#ff9a5c', 1.2); lblRoom.position.set(0, 0.9, 3.1); scene.add(lblRoom);
-const lblVent = textSprite('岩浆通道', '#ff9a5c', 1.2); lblVent.position.set(0, 2.9, 3.1); scene.add(lblVent);
+const lblRoom = textSprite('岩浆房', '#ff9a5c', 1.2); lblRoom.position.set(0, 0.9, 3.1); volcanoG.add(lblRoom);
+const lblVent = textSprite('岩浆通道', '#ff9a5c', 1.2); lblVent.position.set(0, 2.9, 3.1); volcanoG.add(lblVent);
 
 // 喷发:岩浆弹 + 烟灰 + 火光
 const lavaGroup = new THREE.Group(); scene.add(lavaGroup);
