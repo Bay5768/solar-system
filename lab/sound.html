@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<title>声音看得见 · 3D科学教室</title>
+</head>
+<body>
+<div id="app"></div>
+<div id="status" class="hidden"></div>
+<div id="ctrl" class="panel">
+  <button id="play">▶ 播放声音</button>
+  <label>音调(频率)<input type="range" id="freq" min="120" max="900" value="440"><span class="val" id="freqVal">440Hz</span></label>
+  <label>响度(振幅)<input type="range" id="amp" min="0" max="100" value="60"><span class="val" id="ampVal">60%</span></label>
+</div>
+
+<script src="common.js"></script>
+<script type="importmap">
+{ "imports": { "three": "../vendor/three.module.min.js", "three/addons/": "../vendor/" } }
+</script>
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+window.THREE = THREE;
+
+Lab.init({ title: '🔊 声音看得见', tag: '科学', hint: '点播放听声音 · 调音调和响度 · 拖拽旋转视角' });
+
+const { renderer, scene, camera, controls } = Lab.scene3d({ orbit: OrbitControls, cam: [7, 4.5, 10] });
+controls.target.set(7, 0, 0);
+scene.background = new THREE.Color(0x0a0e1c);
+scene.add(new THREE.AmbientLight(0x99aacc, 0.8));
+const dl = new THREE.DirectionalLight(0xffffff, 1.2); dl.position.set(6, 8, 6); scene.add(dl);
+
+// 喇叭
+const speaker = new THREE.Group();
+speaker.add(new THREE.Mesh(new THREE.BoxGeometry(1.4, 3, 2.6), new THREE.MeshStandardMaterial({ color: 0x39445c, roughness: 0.6 })));
+const coneOuter = new THREE.Mesh(new THREE.CylinderGeometry(0.95, 0.55, 0.5, 24, 1, true), new THREE.MeshStandardMaterial({ color: 0x222c40, roughness: 0.5, side: THREE.DoubleSide }));
+coneOuter.rotation.z = Math.PI / 2; coneOuter.position.x = 0.95;
+speaker.add(coneOuter);
+const coneTip = new THREE.Mesh(new THREE.SphereGeometry(0.3, 16, 10), new THREE.MeshStandardMaterial({ color: 0xf0f4ff, roughness: 0.4 }));
+coneTip.position.x = 1.1;
+speaker.add(coneTip);
+speaker.position.set(-0.8, 0, 0);
+scene.add(speaker);
+
+// 空气分子点阵(声音让它们左右振动)
+const NX = 52, NY = 16, GAP = 0.34;
+const pos0 = [];
+const dots = new THREE.Group();
+let a = 555;
+const rand = () => { a |= 0; a = a + 0x6D2B79F5 | 0; let t = Math.imul(a ^ a >>> 15, 1 | a); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; };
+const dotGeo = new THREE.SphereGeometry(0.055, 8, 6);
+const dotMat = new THREE.MeshStandardMaterial({ color: 0x9fc5ff, roughness: 0.4 });
+for (let ix = 0; ix < NX; ix++) {
+  for (let iy = 0; iy < NY; iy++) {
+    const m = new THREE.Mesh(dotGeo, dotMat);
+    const x = ix * GAP + 0.8, y = (iy - (NY - 1) / 2) * GAP + (rand() - 0.5) * 0.05, z = (rand() - 0.5) * 0.5;
+    m.position.set(x, y, z);
+    pos0.push({ m, x, y, z });
+    dots.add(m);
+  }
+}
+scene.add(dots);
+// 波形亮线
+const waveLine = new THREE.Line(
+  new THREE.BufferGeometry().setFromPoints(Array.from({ length: 200 }, () => new THREE.Vector3())),
+  new THREE.LineBasicMaterial({ color: 0xffd04a })
+);
+scene.add(waveLine);
+
+// WebAudio 发声
+let audio = null, osc = null, gainNode = null, playing = false;
+function ensureAudio() {
+  if (audio) return;
+  audio = new (window.AudioContext || window.webkitAudioContext)();
+  osc = audio.createOscillator();
+  osc.type = 'sine';
+  gainNode = audio.createGain();
+  gainNode.gain.value = 0;
+  osc.connect(gainNode).connect(audio.destination);
+  osc.start();
+}
+const freqEl = document.getElementById('freq'), ampEl = document.getElementById('amp');
+function applySound() {
+  const f = +freqEl.value, amp = +ampEl.value / 100;
+  document.getElementById('freqVal').textContent = f + 'Hz';
+  document.getElementById('ampVal').textContent = Math.round(amp * 100) + '%';
+  if (osc) osc.frequency.value = f;
+  if (gainNode) gainNode.gain.value = playing ? amp * 0.25 : 0;
+  Lab.status(playing ? `🎵 音调:${f < 300 ? '低沉' : f < 600 ? '中等' : '尖锐'}(${f}Hz) · 响度:${amp * 100 | 0}%` : '点「播放声音」听一听');
+}
+freqEl.oninput = applySound;
+ampEl.oninput = applySound;
+document.getElementById('play').onclick = function () {
+  ensureAudio();
+  if (audio.state === 'suspended') audio.resume();
+  playing = !playing;
+  this.textContent = playing ? '⏸ 停止' : '▶ 播放声音';
+  this.classList.toggle('active', playing);
+  applySound();
+};
+
+Lab.fact([
+  { t: '声音是振动', d: '喇叭的纸盆来回振动,推挤旁边的空气,空气一密一疏地传到你耳朵,耳膜也跟着振动——你就听到声音啦!' },
+  { t: '频率 = 音调', d: '振动越快(频率越高),声音越尖细,像小鸟叫;振动越慢,声音越低沉,像大鼓。频率的单位是赫兹(Hz)。' },
+  { t: '振幅 = 响度', d: '振动得越厉害(振幅越大),声音越响。轻轻敲鼓声音小,用力敲鼓声音大!' },
+  { t: '真空里没有声音', d: '声音要靠空气、水这些介质传播。太空里没有空气,所以宇航员要用电台说话!' },
+]);
+Lab.quiz([
+  { q: '声音是怎么产生的?', opt: ['振动', '发光', '风吹'], a: 0, why: '一切声音都来自振动:喇叭的纸盆、我们的声带、敲响的鼓面都在振动!' },
+  { q: '振动越快,声音听起来?', opt: ['越响', '音调越高越尖', '越低沉'], a: 1, why: '振动快=频率高=音调高,像小鸟"啾啾"叫;振动慢就是低沉的大鼓声。' },
+  { q: '宇航员在太空里不用电台能直接说话吗?', opt: ['能,大声喊就行', '不能,真空不传声', '能,声音传得更快'], a: 1, why: '太空里没有空气,振动没法传递,所以必须用无线电通话!' },
+]);
+
+let t = 0;
+applySound();
+renderer.setAnimationLoop(() => {
+  t += 0.016;
+  const f = +freqEl.value, amp = +ampEl.value / 100;
+  const visA = playing ? 0.06 + amp * 0.24 : 0.02;
+  const k = 1.1 + f / 900 * 2.4;          // 频率越高,波越密
+  const omega = 2.4 + f / 900 * 3;
+  const conePush = playing ? Math.sin(t * omega * 2) * visA : 0;
+  coneTip.position.x = 1.1 + conePush;
+  pos0.forEach(p => {
+    const wave = playing ? Math.sin(p.x * k - t * omega * 4) * visA * Math.exp(-p.x * 0.02) : 0;
+    p.m.position.x = p.x + wave;
+    // 颜色随挤压微微变亮
+  });
+  // 波形线
+  const wp = waveLine.geometry.attributes.position;
+  for (let i = 0; i < 200; i++) {
+    const x = i / 199 * (NX * GAP - 1);
+    wp.setXYZ(i, x + 0.8, 2.6 + (playing ? Math.sin(x * k - t * omega * 4) * (visA * 6) : 0), 0);
+  }
+  wp.needsUpdate = true;
+  controls.update();
+  renderer.render(scene, camera);
+});
+</script>
+</body>
+</html>
