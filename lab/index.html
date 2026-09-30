@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<title>小朋友的3D科学教室</title>
+<style>
+* { margin:0; padding:0; box-sizing:border-box; }
+html,body { min-height:100%; }
+body {
+  background:radial-gradient(ellipse at 50% -20%, #1b2b55 0%, #0a0f1e 55%, #05070f 100%);
+  font-family:-apple-system,"Segoe UI","Microsoft YaHei",sans-serif;
+  color:#eef3ff; user-select:none; overflow-x:hidden;
+  padding-bottom:40px;
+}
+/* 星星背景 */
+.stars, .stars2 { position:fixed; inset:0; pointer-events:none; z-index:0; }
+.stars i, .stars2 i {
+  position:absolute; width:3px; height:3px; border-radius:50%; background:#fff; opacity:0.7;
+  animation:tw 3s ease-in-out infinite;
+}
+.stars2 i { width:2px; height:2px; animation-duration:4.5s; }
+@keyframes tw { 0%,100% { opacity:0.15; } 50% { opacity:0.9; } }
+
+header { position:relative; z-index:1; text-align:center; padding:44px 16px 10px; }
+h1 { font-size:clamp(24px, 5vw, 38px); letter-spacing:4px; }
+h1 .rainbow {
+  background:linear-gradient(90deg,#ff8a5c,#ffd166,#8ce99a,#74c0fc,#e599f7);
+  -webkit-background-clip:text; background-clip:text; color:transparent;
+}
+header p { margin-top:10px; color:#9db1d8; font-size:14px; letter-spacing:2px; }
+.sub { margin-top:6px; font-size:12px; color:#6d7fa3; }
+
+.grid {
+  position:relative; z-index:1; max-width:1060px; margin:26px auto 0; padding:0 16px;
+  display:grid; grid-template-columns:repeat(auto-fill, minmax(240px, 1fr)); gap:16px;
+}
+a.card {
+  display:block; text-decoration:none; color:inherit; border-radius:18px; padding:18px 18px 15px;
+  background:rgba(22,30,52,0.85); border:1px solid rgba(255,255,255,0.12);
+  transition:transform .18s, border-color .18s, box-shadow .18s; position:relative; overflow:hidden;
+}
+a.card:hover { transform:translateY(-4px); border-color:var(--c); box-shadow:0 10px 30px color-mix(in srgb, var(--c) 25%, transparent); }
+.card .emoji { font-size:38px; display:inline-block; animation:bob 3s ease-in-out infinite; animation-delay:var(--d, 0s); }
+@keyframes bob { 0%,100% { transform:translateY(0); } 50% { transform:translateY(-5px); } }
+.card h3 { font-size:17px; margin-top:8px; letter-spacing:1px; }
+.card p { font-size:12px; color:#9db1d8; margin-top:6px; line-height:1.7; }
+.card .badge {
+  position:absolute; top:14px; right:14px; font-size:11px; font-weight:700;
+  padding:4px 9px; border-radius:9px;
+  background:color-mix(in srgb, var(--c) 22%, transparent);
+  border:1px solid color-mix(in srgb, var(--c) 55%, transparent);
+  color:var(--c);
+}
+footer { position:relative; z-index:1; text-align:center; margin-top:36px; font-size:12px; color:#5d6f94; line-height:2; }
+footer a { color:#8fb2ff; text-decoration:none; }
+</style>
+</head>
+<body>
+<div class="stars"></div><div class="stars2"></div>
+<header>
+  <h1>🔬 小朋友的<span class="rainbow">3D 科学教室</span></h1>
+  <p>拖一拖 · 转一转 · 点一点,玩着玩着就学会了</p>
+  <div class="sub">💡 每个实验都有知识卡片和小测验 · 手机电脑都能玩</div>
+</header>
+
+<div class="grid" id="grid"></div>
+
+<footer>
+  <a href="../index.html">☀ 3D 太阳系模拟</a> · 同系列更多实验持续更新中<br>
+  建议使用较新的浏览器打开 · 声音实验请打开音量
+</footer>
+
+<script>
+const EXP = [
+  { f:'cube-net.html',   e:'📦', t:'正方体展开图', s:'数学', d:'拖动滑块,看正方体折起来、又展开——你能找到几种展开法?', c:'#74c0fc' },
+  { f:'revolution.html', e:'🎡', t:'面动成体',     s:'数学', d:'长方形转一圈变成圆柱!三角形呢?亲眼看看「面动成体」。', c:'#e599f7' },
+  { f:'pizza.html',      e:'🍕', t:'分数披萨店',   s:'数学', d:'切披萨、数块块,1/2 和 2/4 是不是一样多?动口又动手。', c:'#ffa94d' },
+  { f:'moon-phases.html',e:'🌙', t:'月亮变脸记',   s:'科学', d:'新月、上弦、满月……月亮为什么每天长得不一样?', c:'#ffe066' },
+  { f:'seasons.html',    e:'🍂', t:'四季的秘密',   s:'科学', d:'地球歪着脖子绕太阳转圈,就有了春夏秋冬。', c:'#8ce99a' },
+  { f:'eclipse.html',    e:'🌑', t:'日食和月食',   s:'科学', d:'月亮排进太阳和地球中间,天会突然变黑,这是为什么?', c:'#b197fc' },
+  { f:'water-cycle.html',e:'💧', t:'水滴旅行记',   s:'科学', d:'变成小水滴,从大海飞上山,再变成雨落下来!', c:'#66d9e8' },
+  { f:'rainbow.html',    e:'🌈', t:'彩虹的秘密',   s:'科学', d:'白光钻过三棱镜,变出了七种颜色,红橙黄绿蓝靛紫!', c:'#ff8787' },
+  { f:'volcano.html',    e:'🌋', t:'火山喷发',     s:'科学', d:'切开的火山里面长什么样?按下按钮,嘭——喷发啦!', c:'#ff922b' },
+  { f:'sound.html',      e:'🔊', t:'声音看得见',   s:'科学', d:'声音是振动!调一调音调和响度,看见声波跑起来。', c:'#63e6be' },
+];
+const grid = document.getElementById('grid');
+EXP.forEach((x, i) => {
+  const a = document.createElement('a');
+  a.className = 'card'; a.href = x.f; a.style.setProperty('--c', x.c);
+  a.style.setProperty('--d', (i * 0.25) + 's');
+  a.innerHTML = `<span class="badge">${x.s}</span><span class="emoji">${x.e}</span><h3>${x.t}</h3><p>${x.d}</p>`;
+  grid.appendChild(a);
+});
+// 星星
+const mk = (el, n) => { for (let i = 0; i < n; i++) {
+  const s = document.createElement('i');
+  s.style.left = Math.random() * 100 + '%';
+  s.style.top = Math.random() * 100 + '%';
+  s.style.animationDelay = (Math.random() * 4) + 's';
+  el.appendChild(s);
+} };
+mk(document.querySelector('.stars'), 90);
+mk(document.querySelector('.stars2'), 70);
+</script>
+</body>
+</html>
