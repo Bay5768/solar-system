@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<title>水滴旅行记 · 3D科学教室</title>
+</head>
+<body>
+<div id="app"></div>
+<div id="status" class="hidden"></div>
+<div id="ctrl" class="panel">
+  <span>旅行步骤:</span>
+  <button data-s="0">① 蒸发</button>
+  <button data-s="1">② 凝结成云</button>
+  <button data-s="2">③ 下雨啦</button>
+  <button data-s="3">④ 流回大海</button>
+  <label><input type="checkbox" id="auto" checked>自动循环</label>
+</div>
+
+<script src="common.js"></script>
+<script type="importmap">
+{ "imports": { "three": "../vendor/three.module.min.js", "three/addons/": "../vendor/" } }
+</script>
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+window.THREE = THREE;
+
+Lab.init({ title: '💧 水滴旅行记', tag: '科学', hint: '点击步骤看讲解 · 拖拽旋转视角' });
+
+const { renderer, scene, camera, controls } = Lab.scene3d({ orbit: OrbitControls, cam: [0, 7, 13] });
+controls.target.set(0, 1.5, 0);
+scene.add(new THREE.AmbientLight(0xbfd4ff, 0.8));
+const sunLight = new THREE.DirectionalLight(0xfff2d8, 1.8); sunLight.position.set(-6, 9, 4); scene.add(sunLight);
+scene.background = new THREE.Color(0x8ec9f0);
+scene.fog = new THREE.Fog(0x8ec9f0, 30, 70);
+
+// 大地(绿色圆盘)与大海(蓝色)
+const ground = new THREE.Mesh(new THREE.CircleGeometry(16, 48), new THREE.MeshStandardMaterial({ color: 0x69b46b, roughness: 1 }));
+ground.rotation.x = -Math.PI / 2; scene.add(ground);
+const sea = new THREE.Mesh(new THREE.CircleGeometry(9, 48), new THREE.MeshStandardMaterial({ color: 0x2f7fd0, roughness: 0.25, metalness: 0.1 }));
+sea.rotation.x = -Math.PI / 2; sea.position.set(-5, 0.02, 3); scene.add(sea);
+
+// 山(锥体+雪顶)
+const mount = new THREE.Mesh(new THREE.ConeGeometry(3.2, 4.6, 7), new THREE.MeshStandardMaterial({ color: 0x4f8f52, roughness: 1, flatShading: true }));
+mount.position.set(3.4, 2.3, -1.5); scene.add(mount);
+const cap = new THREE.Mesh(new THREE.ConeGeometry(1.05, 1.5, 7), new THREE.MeshStandardMaterial({ color: 0xf4f8ff, roughness: 0.6, flatShading: true }));
+cap.position.set(3.4, 4, -1.5); scene.add(cap);
+
+// 小河:从山脚弯到大海
+const curve = new THREE.CatmullRomCurve3([
+  new THREE.Vector3(2.2, 0.05, -0.4), new THREE.Vector3(0.8, 0.05, 0.8),
+  new THREE.Vector3(-0.8, 0.05, 1.8), new THREE.Vector3(-2.4, 0.05, 2.6)
+]);
+scene.add(new THREE.Mesh(
+  new THREE.TubeGeometry(curve, 24, 0.18, 8),
+  new THREE.MeshStandardMaterial({ color: 0x3f97dd, roughness: 0.3 })
+));
+
+// 太阳
+const sun = new THREE.Mesh(new THREE.SphereGeometry(0.9, 24, 12), new THREE.MeshBasicMaterial({ color: 0xffd76a }));
+sun.position.set(-9, 8, -6); scene.add(sun);
+const glow = new THREE.Sprite(new THREE.SpriteMaterial({
+  map: Lab.softDot(), color: 0xffd76a, blending: THREE.AdditiveBlending, transparent: true, depthWrite: false
+}));
+glow.position.copy(sun.position); glow.scale.setScalar(7); scene.add(glow);
+
+// 云(几个白球拼成)
+const cloud = new THREE.Group();
+[[0, 0, 0, 0.85], [0.9, 0.1, 0.1, 0.65], [-0.9, 0.05, -0.1, 0.7], [0.3, 0.45, 0, 0.6], [-0.4, 0.4, 0.1, 0.55]].forEach(([x, y, z, r]) => {
+  cloud.add(new THREE.Mesh(new THREE.SphereGeometry(r, 20, 12), new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.9, transparent: true, opacity: 0.95 })));
+});
+cloud.position.set(0.5, 6.2, -0.5); scene.add(cloud);
+
+// 水汽粒子(从海面上升)
+function makeParticles(N, color, size) {
+  const pos = new Float32Array(N * 3);
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+  const m = new THREE.Points(g, new THREE.PointsMaterial({
+    color, size, map: Lab.softDot(), transparent: true, opacity: 0.85, depthWrite: false
+  }));
+  scene.add(m);
+  return { pts: m, arr: pos, N };
+}
+const vapor = makeParticles(46, 0xcfeeff, 0.32);
+vapor.arr.forEach((_, i) => {
+  vapor.arr[i * 3] = -5 + (Math.random() - 0.5) * 9;
+  vapor.arr[i * 3 + 1] = 0.1 + Math.random() * 5;
+  vapor.arr[i * 3 + 2] = 3 + (Math.random() - 0.5) * 9;
+});
+const rain = makeParticles(90, 0x6ab6ff, 0.26);
+rain.arr.forEach((_, i) => {
+  rain.arr[i * 3] = 0.5 + (Math.random() - 0.5) * 3.4;
+  rain.arr[i * 3 + 1] = Math.random() * 5.6;
+  rain.arr[i * 3 + 2] = -0.5 + (Math.random() - 0.5) * 3.4;
+});
+
+const STEPS = [
+  '① 蒸发:太阳把海水晒得暖洋洋,水变成看不见的水汽,轻飘飘飞上天~',
+  '② 凝结成云:水汽飞得越高越冷,挤在一起变成小水珠,千万颗小水珠就是云!',
+  '③ 下雨啦:云里的小水珠越抱越大,大到空气托不住,就哗啦啦掉下来——雨(冷天就是雪)!',
+  '④ 流回大海:雨水落进小河,哗啦哗啦流回大海,水滴的旅行永远不停!',
+];
+const HINTS = ['海水蒸发', '水汽凝成云', '雨落下来', '河水入海'];
+let step = 0, stepT = 0;
+
+function setStep(s) {
+  step = s;
+  document.querySelectorAll('#ctrl button[data-s]').forEach((b, i) => b.classList.toggle('active', i === s));
+  Lab.status(STEPS[s]);
+}
+document.querySelectorAll('#ctrl button[data-s]').forEach((b, i) => b.onclick = () => {
+  document.getElementById('auto').checked = false;
+  setStep(i);
+});
+
+Lab.fact([
+  { t: '水循环', d: '大海和地面的水被太阳晒成水汽升上天空,变成云,再变成雨雪落下来,最后流回大海——水一直在做环球旅行,永远不会停下来!' },
+  { t: '三种样子', d: '水有三种样子:液态的水、看不见的水汽(气态)、冰和雪(固态)。温度变化让它们互相变身。' },
+  { t: '雨从哪里来?', d: '一朵云里有几亿颗小水珠!它们挤在一起长大,大到空气托不住时,就落下来变成雨。' },
+]);
+Lab.quiz([
+  { q: '海水变成水汽飞上天,这个过程叫什么?', opt: ['凝结', '蒸发', '冻结'], a: 1, why: '太阳一晒,液态水变成气态水汽飞上天,这叫蒸发!' },
+  { q: '云是由什么组成的?', opt: ['棉花糖', '小冰晶和小水珠', '水蒸气直接可见的雾'], a: 1, why: '云是亿万颗小水珠和小冰晶聚在一起形成的!' },
+  { q: '雨水最后流到哪里去?', opt: ['消失不见了', '流回小河和大海', '留在云里'], a: 1, why: '雨水汇成小河,小河流向大海,然后开始下一轮旅行——这就是水循环!' },
+]);
+
+let t = 0;
+renderer.setAnimationLoop(() => {
+  t += 0.016;
+  // 云飘动;凝结步骤时云变大
+  const cloudTarget = step === 1 ? 1.25 : 1;
+  cloud.scale.lerp(new THREE.Vector3(cloudTarget, cloudTarget, cloudTarget), 0.05);
+  cloud.position.x = 0.5 + Math.sin(t * 0.25) * 0.6;
+  // 水汽:步骤0/全部时上升
+  for (let i = 0; i < vapor.N; i++) {
+    vapor.arr[i * 3 + 1] += 0.02;
+    vapor.arr[i * 3] += Math.sin(t * 2 + i) * 0.004;
+    if (vapor.arr[i * 3 + 1] > 6) vapor.arr[i * 3 + 1] = 0.12;
+  }
+  vapor.pts.geometry.attributes.position.needsUpdate = true;
+  // 雨:步骤2时密集下落
+  const rainSpeed = step === 2 ? 0.16 : 0.05;
+  for (let i = 0; i < rain.N; i++) {
+    rain.arr[i * 3 + 1] -= rainSpeed;
+    if (rain.arr[i * 3 + 1] < 0.05) rain.arr[i * 3 + 1] = 5.4 + Math.random();
+  }
+  rain.pts.geometry.attributes.position.needsUpdate = true;
+  rain.pts.material.opacity = step === 2 ? 0.95 : 0.3;
+  // 自动循环:每5秒切一步
+  if (document.getElementById('auto').checked) {
+    stepT += 0.016;
+    if (stepT > 5) { stepT = 0; setStep((step + 1) % 4); }
+  }
+  controls.update();
+  renderer.render(scene, camera);
+});
+setStep(0);
+</script>
+</body>
+</html>
