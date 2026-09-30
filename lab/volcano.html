@@ -1,0 +1,189 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<title>火山喷发 · 3D科学教室</title>
+</head>
+<body>
+<div id="app"></div>
+<div id="status" class="hidden"></div>
+<div id="ctrl" class="panel">
+  <button id="boom" style="font-size:15px">🌋 喷发!</button>
+  <label><input type="checkbox" id="auto">自动喷发</label>
+  <label><input type="checkbox" id="cut" checked>显示内部结构</label>
+</div>
+
+<script src="common.js"></script>
+<script type="importmap">
+{ "imports": { "three": "../vendor/three.module.min.js", "three/addons/": "../vendor/" } }
+</script>
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+window.THREE = THREE;
+
+Lab.init({ title: '🌋 火山喷发', tag: '科学', hint: '点「喷发」按钮 · 拖拽旋转视角看看山里面' });
+
+const { renderer, scene, camera, controls } = Lab.scene3d({ orbit: OrbitControls, cam: [6, 5, 9] });
+controls.target.set(0, 1.8, 0);
+scene.add(new THREE.AmbientLight(0xbcc8e8, 0.75));
+const dl = new THREE.DirectionalLight(0xfff2d8, 1.5); dl.position.set(6, 9, 4); scene.add(dl);
+scene.background = new THREE.Color(0x1a2138);
+Lab.stars(scene, 400);
+
+const ground = new THREE.Mesh(new THREE.CircleGeometry(20, 48), new THREE.MeshStandardMaterial({ color: 0x3f5f42, roughness: 1 }));
+ground.rotation.x = -Math.PI / 2; scene.add(ground);
+
+// 火山山体:留出 1/4 缺口的锥体(剖面)
+const CRATER_Y = 4.6, CRATER_R = 0.55, BASE_R = 3.4;
+const cone = new THREE.Mesh(
+  new THREE.ConeGeometry(BASE_R, CRATER_Y, 48, 1, true, Math.PI * 0.12, Math.PI * 1.76),
+  new THREE.MeshStandardMaterial({ color: 0x6e4f38, roughness: 1, flatShading: true, side: THREE.DoubleSide })
+);
+cone.position.y = CRATER_Y / 2;
+scene.add(cone);
+// 山顶火山口(暗红边缘)
+const craterRing = new THREE.Mesh(
+  new THREE.TorusGeometry(CRATER_R, 0.16, 10, 32),
+  new THREE.MeshStandardMaterial({ color: 0x8a3b28, roughness: 1 })
+);
+craterRing.rotation.x = Math.PI / 2;
+craterRing.position.y = CRATER_Y;
+scene.add(craterRing);
+
+// 剖面贴图:画出岩浆房与通道
+function cutawayTexture() {
+  const c = document.createElement('canvas'); c.width = 256; c.height = 342;
+  const ctx = c.getContext('2d');
+  // 岩石分层
+  const layers = ['#5d4433', '#6e5138', '#5d4433', '#6e5138', '#4a3628'];
+  const h = 342 / layers.length;
+  layers.forEach((col, i) => { ctx.fillStyle = col; ctx.fillRect(0, i * h, 256, h + 1); });
+  // 岩浆房
+  ctx.fillStyle = '#ff6b2b'; ctx.beginPath(); ctx.ellipse(150, 285, 62, 42, 0, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = '#ffc04d'; ctx.beginPath(); ctx.ellipse(150, 285, 44, 28, 0, 0, Math.PI * 2); ctx.fill();
+  // 通道(斜向左上,贴着三角斜边)
+  ctx.fillStyle = '#ff6b2b';
+  ctx.beginPath();
+  ctx.moveTo(118, 300); ctx.lineTo(175, 300); ctx.lineTo(24, 14); ctx.lineTo(0, 14);
+  ctx.closePath(); ctx.fill();
+  return Lab.toTexture(c);
+}
+const cutTex = cutawayTexture();
+// 剖面切口:过轴线的竖直三角形切面(顶点=火山口,底边沿半径)
+const cutGroup = new THREE.Group();
+function cutFace(theta) {
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.Float32BufferAttribute([
+    0, 0, 0,
+    Math.cos(theta) * BASE_R, 0, Math.sin(theta) * BASE_R,
+    0, CRATER_Y, 0
+  ], 3));
+  geo.setAttribute('uv', new THREE.Float32BufferAttribute([0, 0, 1, 0, 0, 1], 2));
+  geo.computeVertexNormals();
+  return new THREE.Mesh(geo, new THREE.MeshStandardMaterial({
+    map: cutTex, roughness: 1, side: THREE.DoubleSide
+  }));
+}
+cutGroup.add(cutFace(Math.PI * 0.12));
+cutGroup.add(cutFace(Math.PI * 1.88));
+scene.add(cutGroup);
+document.getElementById('cut').onchange = e => cutGroup.visible = e.target.checked;
+
+// 文字标注
+function textSprite(text, color = '#ffd68a', size = 1.4) {
+  const c = document.createElement('canvas'); c.width = 256; c.height = 88;
+  const ctx = c.getContext('2d');
+  ctx.font = 'bold 48px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.shadowColor = 'rgba(0,0,0,0.9)'; ctx.shadowBlur = 8;
+  ctx.fillStyle = color; ctx.fillText(text, 128, 48);
+  const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: Lab.toTexture(c), transparent: true, depthWrite: false }));
+  sp.scale.set(size, size * 0.34, 1);
+  return sp;
+}
+const lblCrater = textSprite('火山口', '#ffd68a'); lblCrater.position.set(0, CRATER_Y + 0.9, 0); scene.add(lblCrater);
+const lblRoom = textSprite('岩浆房', '#ff9a5c', 1.2); lblRoom.position.set(0, 0.9, 3.1); scene.add(lblRoom);
+const lblVent = textSprite('岩浆通道', '#ff9a5c', 1.2); lblVent.position.set(0, 2.9, 3.1); scene.add(lblVent);
+
+// 喷发:岩浆弹 + 烟灰 + 火光
+const lavaGroup = new THREE.Group(); scene.add(lavaGroup);
+const lavaBalls = [];
+for (let i = 0; i < 42; i++) {
+  const b = new THREE.Mesh(
+    new THREE.SphereGeometry(0.09 + Math.random() * 0.12, 8, 6),
+    new THREE.MeshBasicMaterial({ color: [0xff5a2b, 0xffa02b, 0xffd04d][i % 3] })
+  );
+  b.userData = { v: new THREE.Vector3(), life: 0 };
+  lavaGroup.add(b); lavaBalls.push(b);
+}
+const smokeGroup = new THREE.Group(); scene.add(smokeGroup);
+const smokes = [];
+for (let i = 0; i < 14; i++) {
+  const s = new THREE.Sprite(new THREE.SpriteMaterial({
+    map: Lab.softDot(), color: 0x555a66, transparent: true, opacity: 0, depthWrite: false
+  }));
+  s.userData = { life: 0, max: 3 + Math.random() * 2 };
+  smokeGroup.add(s); smokes.push(s);
+}
+const lavaLight = new THREE.PointLight(0xff7a30, 0, 18);
+lavaLight.position.set(0, CRATER_Y + 0.5, 0); scene.add(lavaLight);
+
+let erupting = 0; // 剩余喷发时间
+function erupt() {
+  erupting = 6;
+  lavaBalls.forEach(b => {
+    b.userData.life = 2 + Math.random() * 3;
+    b.position.set((Math.random() - 0.5) * 0.3, CRATER_Y, (Math.random() - 0.5) * 0.3);
+    b.userData.v.set((Math.random() - 0.5) * 3.2, 5.5 + Math.random() * 3.5, (Math.random() - 0.5) * 3.2);
+  });
+  smokes.forEach(s => { s.userData.life = s.userData.max; s.position.set((Math.random() - 0.5) * 0.8, CRATER_Y, (Math.random() - 0.5) * 0.8); });
+  Lab.status('嘭——!!岩浆冲出火山口,火山灰冲上高空!');
+}
+document.getElementById('boom').onclick = erupt;
+
+Lab.fact([
+  { t: '火山是地球的出气口', d: '地球内部又热又挤,岩石被烤化成岩浆。岩浆攒够了压力,就从地壳薄的地方冲出来,这就是火山喷发!' },
+  { t: '岩浆和岩浆岩', d: '留在地下的叫岩浆,喷出地面的叫熔岩。熔岩冷了变硬,就变成岩石——很多黑色的石头都是这么来的!' },
+  { t: '火山灰是好人也是坏人', d: '火山灰能让土壤特别肥沃(所以很多人住在火山附近),但大量火山灰遮住天空,会让好几年庄稼都长不好。' },
+]);
+Lab.quiz([
+  { q: '火山喷出来之前,岩浆藏在哪里?', opt: ['岩浆房', '山洞里', '云彩里'], a: 0, why: '地壳下面有个存岩浆的"仓库",叫岩浆房,压力够大了才会喷出来!' },
+  { q: '熔岩冷却变硬之后会变成什么?', opt: ['岩石', '沙子', '土'], a: 0, why: '喷出来的熔岩温度高达上千度,凉下来就变硬,成为黑色的火山岩!' },
+  { q: '火山灰对土壤有什么影响?', opt: ['让土壤更肥沃', '让土壤消失', '没有影响'], a: 0, why: '火山灰含很多矿物质,能让土壤特别肥,所以火山脚下常常有人种葡萄和果树!' },
+]);
+
+let t = 0;
+renderer.setAnimationLoop(() => {
+  t += 0.016;
+  if (document.getElementById('auto').checked && erupting <= 0) erupt();
+  if (erupting > 0) {
+    erupting -= 0.016;
+    lavaLight.intensity = 14 * Math.min(1, erupting);
+    // 岩浆弹
+    lavaBalls.forEach(b => {
+      if (b.userData.life <= 0) return;
+      b.userData.life -= 0.016;
+      b.userData.v.y -= 0.11;
+      b.position.addScaledVector(b.userData.v, 0.016 * 6);
+      if (b.userData.life <= 0 || b.position.y < 0.05) { b.userData.life = 0; b.position.y = -5; }
+    });
+    // 烟柱
+    smokes.forEach(s => {
+      if (s.userData.life <= 0) return;
+      s.userData.life -= 0.016;
+      const k = 1 - s.userData.life / s.userData.max;
+      s.position.y += 0.035; s.position.x += Math.sin(t * 2 + s.position.y) * 0.006;
+      s.scale.setScalar(0.5 + k * 3.4);
+      s.material.opacity = 0.55 * (1 - k);
+      if (s.userData.life <= 0) s.material.opacity = 0;
+    });
+  } else {
+    lavaLight.intensity *= 0.95;
+  }
+  controls.update();
+  renderer.render(scene, camera);
+});
+</script>
+</body>
+</html>
