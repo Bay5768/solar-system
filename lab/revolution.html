@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<title>面动成体 · 3D科学教室</title>
+</head>
+<body>
+<div id="app"></div>
+<div id="status" class="hidden"></div>
+<div id="ctrl" class="panel">
+  <span>平面图形:</span>
+  <button data-s="0" class="active">长方形→圆柱</button>
+  <button data-s="1">直角三角形→圆锥</button>
+  <button data-s="2">梯形→圆台</button>
+  <button data-s="3">半圆→球</button>
+  <label>旋转 <input type="range" id="ang" min="0" max="360" value="0"><span class="val" id="angVal">0°</span></label>
+</div>
+
+<script src="common.js"></script>
+<script type="importmap">
+{ "imports": { "three": "../vendor/three.module.min.js", "three/addons/": "../vendor/" } }
+</script>
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+window.THREE = THREE;
+
+Lab.init({ title: '🎡 面动成体', tag: '数学', hint: '拖动滑块旋转 · 拖拽旋转视角' });
+
+const { renderer, scene, camera, controls } = Lab.scene3d({ orbit: OrbitControls, cam: [4.5, 3, 6] });
+scene.add(new THREE.AmbientLight(0xffffff, 0.7));
+const dl = new THREE.DirectionalLight(0xffffff, 1.6); dl.position.set(4, 6, 4); scene.add(dl);
+Lab.stars(scene, 500);
+
+// 旋转轴(竖直银色圆柱)
+const axis = new THREE.Mesh(
+  new THREE.CylinderGeometry(0.03, 0.03, 3.4, 12),
+  new THREE.MeshStandardMaterial({ color: 0xcfd8e8, metalness: 0.7, roughness: 0.3 })
+);
+scene.add(axis);
+
+// 四种平面图形的轮廓点(x=离轴半径, y=高度),围绕 Y 轴旋转
+const SHAPES = [
+  { name: '长方形 → 圆柱', pts: [[0.4, -0.9], [1.4, -0.9], [1.4, 0.9], [0.4, 0.9]], solid: '圆柱' },
+  { name: '直角三角形 → 圆锥', pts: [[0.05, -1.2], [1.5, -1.2], [0.05, 1.2]], solid: '圆锥' },
+  { name: '梯形 → 圆台', pts: [[0.5, -1], [1.5, -1], [1.1, 1], [0.5, 1]], solid: '圆台' },
+  { name: '半圆 → 球', pts: Array.from({ length: 25 }, (_, i) => {
+      const a = -Math.PI / 2 + i / 24 * Math.PI;
+      return [Math.cos(a) * 1.25 + 0.001, Math.sin(a) * 1.25];
+    }), solid: '球' },
+];
+
+// 平面图形(亮色描边 + 半透明填充),立在轴旁
+const shapeGroup = new THREE.Group();
+scene.add(shapeGroup);
+// 扫成的立体(LatheGeometry 半透明)
+let solid = null;
+const solidMat = new THREE.MeshStandardMaterial({
+  color: 0x7fb2ff, transparent: true, opacity: 0.42, roughness: 0.35, metalness: 0.1,
+  side: THREE.DoubleSide, depthWrite: false
+});
+
+function buildShape(s) {
+  // 清空重建
+  shapeGroup.clear();
+  if (solid) { scene.remove(solid); solid = null; }
+  const pts = SHAPES[s].pts;
+  const pts2 = [...pts, pts[0]];
+  // 填充面
+  const shape = new THREE.Shape(pts.map(p => new THREE.Vector2(p[0], p[1])));
+  const fill = new THREE.Mesh(
+    new THREE.ShapeGeometry(shape),
+    new THREE.MeshBasicMaterial({ color: 0xffd166, transparent: true, opacity: 0.5, side: THREE.DoubleSide })
+  );
+  shapeGroup.add(fill);
+  // 亮边
+  const line = new THREE.Line(
+    new THREE.BufferGeometry().setFromPoints(pts2.map(p => new THREE.Vector3(p[0], p[1], 0))),
+    new THREE.LineBasicMaterial({ color: 0xffe9a8 })
+  );
+  shapeGroup.add(line);
+  // 立体
+  solid = new THREE.Mesh(new THREE.LatheGeometry(pts.map(p => new THREE.Vector2(p[0], p[1])), 64), solidMat);
+  scene.add(solid);
+  setAngle(0);
+  Lab.status(SHAPES[s].name, 1800);
+}
+
+function setAngle(deg) {
+  const rad = deg / 180 * Math.PI;
+  shapeGroup.rotation.y = rad;
+  if (solid) solid.geometry.dispose(), solid.geometry = new THREE.LatheGeometry(
+    getCurrentPts(), 64, 0, Math.max(rad, 0.001));
+  document.getElementById('angVal').textContent = deg + '°';
+}
+function getCurrentPts() {
+  // 由 shapeGroup 当前按钮决定
+  return SHAPES[cur].pts.map(p => new THREE.Vector2(p[0], p[1]));
+}
+let cur = 0;
+
+document.querySelectorAll('#ctrl button[data-s]').forEach(b => b.onclick = () => {
+  document.querySelectorAll('#ctrl button[data-s]').forEach(x => x.classList.remove('active'));
+  b.classList.add('active');
+  cur = +b.dataset.s;
+  buildShape(cur);
+});
+document.getElementById('ang').oninput = e => setAngle(+e.target.value);
+
+buildShape(0);
+setAngle(90);
+document.getElementById('ang').value = 90;
+
+Lab.fact([
+  { t: '面动成体', d: '长方形绕着它的一条边转一圈,扫过的空间就是圆柱!直角三角形转一圈变成圆锥,半圆转一圈变成球。' },
+  { t: '生活里到处都是', d: '水杯(圆柱)、冰淇淋筒(圆锥)、篮球(球)……都是平面图形"转"出来的!' },
+  { t: '小问题', d: '想一想:梯形转一圈是什么?答对了——圆台,像水桶一样上下不一样粗!' },
+]);
+Lab.quiz([
+  { q: '直角三角形绕直角边转一圈,会变成什么?', opt: ['圆柱', '圆锥', '球'], a: 1, why: '尖尖朝上的三角形转起来,就是冰淇淋筒一样的圆锥!' },
+  { q: '半圆形绕直径转一圈,变成什么?', opt: ['圆锥', '圆台', '球'], a: 2, why: '半个圆转一圈,拼成一个完整的球,像把两个半球扣在一起!' },
+  { q: '长方形离轴远的那条边,转出来的是圆柱的哪个部分?', opt: ['侧面', '底面', '顶点'], a: 0, why: '离轴的边转出的曲面就是圆柱的侧面,靠轴的边转出的是底面(圆)。' },
+]);
+
+renderer.setAnimationLoop(() => {
+  controls.update();
+  renderer.render(scene, camera);
+});
+</script>
+</body>
+</html>
